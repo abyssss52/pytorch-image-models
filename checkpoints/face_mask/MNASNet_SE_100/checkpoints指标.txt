@@ -1,0 +1,4 @@
+
+
+
+*** Best metric: 99.94 (epoch 61)

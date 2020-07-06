@@ -1,0 +1,5 @@
+
+cp $1.param /home/night/PycharmProjects/ncnn/build/tools/$1.param
+cp $1.bin /home/night/PycharmProjects/ncnn/build/tools/$1.bin
+cd /home/night/PycharmProjects/ncnn/build/tools/
+./ncnn2mem $1.param $1.bin $1.id.h $1.mem.h

@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-
-from .layers import create_conv2d, drop_path, get_act_layer
 from .layers.activations import sigmoid
+from .layers import create_conv2d, drop_path
+
 
 # Defaults used for Google/Tensorflow training of mobile networks /w RMSprop as per
 # papers and TF reference implementations. PT momentum equiv for TF decay is (1 - TF decay)
@@ -50,13 +50,6 @@ def resolve_se_args(kwargs, in_chs, act_layer=None):
         assert act_layer is not None
         se_kwargs['act_layer'] = act_layer
     return se_kwargs
-
-
-def resolve_act_layer(kwargs, default='relu'):
-    act_layer = kwargs.pop('act_layer', default)
-    if isinstance(act_layer, str):
-        act_layer = get_act_layer(act_layer)
-    return act_layer
 
 
 def make_divisible(v, divisor=8, min_value=None):
@@ -127,13 +120,11 @@ class ConvBnAct(nn.Module):
         self.bn1 = norm_layer(out_chs, **norm_kwargs)
         self.act1 = act_layer(inplace=True)
 
-    def feature_info(self, location):
-        if location == 'expansion' or location == 'depthwise':
-            # no expansion or depthwise this block, use act after conv
-            info = dict(module='act1', hook_type='forward', num_chs=self.conv.out_channels)
-        else:  # location == 'bottleneck'
-            info = dict(module='', hook_type='', num_chs=self.conv.out_channels)
-        return info
+    def feature_module(self, location):
+        return 'act1'
+
+    def feature_channels(self, location):
+        return self.conv.out_channels
 
     def forward(self, x):
         x = self.conv(x)
@@ -174,15 +165,12 @@ class DepthwiseSeparableConv(nn.Module):
         self.bn2 = norm_layer(out_chs, **norm_kwargs)
         self.act2 = act_layer(inplace=True) if self.has_pw_act else nn.Identity()
 
-    def feature_info(self, location):
-        if location == 'expansion':
-            # no expansion in this block, use depthwise, before SE
-            info = dict(module='act1', hook_type='forward', num_chs=self.conv_pw.in_channels)
-        elif location == 'depthwise':  # after SE
-            info = dict(module='conv_pw', hook_type='forward_pre', num_chs=self.conv_pw.in_channels)
-        else:  # location == 'bottleneck'
-            info = dict(module='', hook_type='', num_chs=self.conv_pw.out_channels)
-        return info
+    def feature_module(self, location):
+        # no expansion in this block, pre pw only feature extraction point
+        return 'conv_pw'
+
+    def feature_channels(self, location):
+        return self.conv_pw.in_channels
 
     def forward(self, x):
         residual = x
@@ -204,48 +192,6 @@ class DepthwiseSeparableConv(nn.Module):
             x += residual
         return x
 
-
-class FinalLayer(nn.Module):
-    def __init__(self, in_chs, num_features, pad_type, norm_kwargs, norm_layer=nn.BatchNorm2d, act_layer=nn.ReLU6):
-        super(FinalLayer, self).__init__()
-        self._in_chs = in_chs
-        self.num_features = num_features
-        norm_kwargs = norm_kwargs or {}
-
-
-        self.conv_head = create_conv2d(self._in_chs, self.num_features, 1, padding=pad_type)
-        self.bn2 = norm_layer(self.num_features, **norm_kwargs)
-        self.act2 = act_layer(inplace=True)
-
-
-    def forward(self, x):
-        x = self.conv_head(x)
-        x = self.bn2(x)
-        x = self.act2(x)
-
-        return x
-
-
-
-class InvertedResidual_easy(nn.Module):
-    def __init__(self, in_chs, num_features, pad_type, norm_kwargs, norm_layer=nn.BatchNorm2d, act_layer=nn.ReLU6):
-        super(InvertedResidual_easy, self).__init__()
-        self._in_chs = in_chs
-        self.num_features = num_features
-        norm_kwargs = norm_kwargs or {}
-
-
-        self.conv_head = create_conv2d(self._in_chs, self.num_features, 1, padding=pad_type)
-        self.bn2 = norm_layer(self.num_features, **norm_kwargs)
-        self.act2 = act_layer(inplace=True)
-
-
-    def forward(self, x):
-        x = self.conv_head(x)
-        x = self.bn2(x)
-        x = self.act2(x)
-
-        return x
 
 class InvertedResidual(nn.Module):
     """ Inverted residual block w/ optional SE and CondConv routing"""
@@ -286,14 +232,16 @@ class InvertedResidual(nn.Module):
         self.conv_pwl = create_conv2d(mid_chs, out_chs, pw_kernel_size, padding=pad_type, **conv_kwargs)
         self.bn3 = norm_layer(out_chs, **norm_kwargs)
 
-    def feature_info(self, location):
-        if location == 'expansion':
-            info = dict(module='act1', hook_type='forward', num_chs=self.conv_pw.in_channels)
-        elif location == 'depthwise':  # after SE
-            info = dict(module='conv_pwl', hook_type='forward_pre', num_chs=self.conv_pwl.in_channels)
-        else:  # location == 'bottleneck'
-            info = dict(module='', hook_type='', num_chs=self.conv_pwl.out_channels)
-        return info
+    def feature_module(self, location):
+        if location == 'post_exp':
+            return 'act1'
+        return 'conv_pwl'
+
+    def feature_channels(self, location):
+        if location == 'post_exp':
+            return self.conv_pw.out_channels
+        # location == 'pre_pw'
+        return self.conv_pwl.in_channels
 
     def forward(self, x):
         residual = x
@@ -411,15 +359,16 @@ class EdgeResidual(nn.Module):
             mid_chs, out_chs, pw_kernel_size, stride=stride, dilation=dilation, padding=pad_type)
         self.bn2 = norm_layer(out_chs, **norm_kwargs)
 
-    def feature_info(self, location):
-        if location == 'expansion':
-            info = dict(module='act1', hook_type='forward', num_chs=self.conv_exp.out_channels)
-        elif location == 'depthwise':
-            # there is no depthwise, take after SE, before PWL
-            info = dict(module='conv_pwl', hook_type='forward_pre', num_chs=self.conv_pwl.in_channels)
-        else:  # location == 'bottleneck'
-            info = dict(module='', hook_type='', num_chs=self.conv_pwl.out_channels)
-        return info
+    def feature_module(self, location):
+        if location == 'post_exp':
+            return 'act1'
+        return 'conv_pwl'
+
+    def feature_channels(self, location):
+        if location == 'post_exp':
+            return self.conv_exp.out_channels
+        # location == 'pre_pw'
+        return self.conv_pwl.in_channels
 
     def forward(self, x):
         residual = x

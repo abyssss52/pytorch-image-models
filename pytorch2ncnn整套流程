@@ -1,0 +1,6 @@
+
+python -m onnxsim mobilenetv2.onnx mobilenetv2-sim.onnx
+
+/home/night/PycharmProjects/ncnn/ncnn/build/tools/onnx/   ./onnx2ncnn mobilenetv2-sim.onnx mobilenetv2.param mobilenetv2.bin
+
+/home/night/PycharmProjects/ncnn/ncnn/build/tools   ./ncnn2mem mobilenetv2.param mobilenetv2.bin mobilenetv2.id.h mobilenetv2.mem.h

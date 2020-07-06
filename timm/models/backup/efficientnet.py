@@ -24,19 +24,14 @@ An implementation of EfficienNet that covers variety of related models with effi
 
 Hacked together by Ross Wightman
 """
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-from typing import List
-
-from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
-from .efficientnet_blocks import round_channels, resolve_bn_args, resolve_act_layer, BN_EPS_TF_DEFAULT
-from .efficientnet_builder import EfficientNetBuilder, decode_arch_def, efficientnet_init_weights
+from .efficientnet_builder import *
 from .feature_hooks import FeatureHooks
-from .helpers import load_pretrained, adapt_model_from_file
-from .layers import SelectAdaptivePool2d, create_conv2d
 from .registry import register_model
+from .helpers import load_pretrained
+from .layers import SelectAdaptivePool2d
+from timm.models.layers import create_conv2d
+from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
+
 
 __all__ = ['EfficientNet']
 
@@ -137,16 +132,6 @@ default_cfgs = {
         input_size=(3, 300, 300), pool_size=(10, 10), crop_pct=0.904),
     'efficientnet_lite4': _cfg(
         url='', input_size=(3, 380, 380), pool_size=(12, 12), crop_pct=0.922),
-
-    'efficientnet_b1_pruned': _cfg(
-        url='https://imvl-automl-sh.oss-cn-shanghai.aliyuncs.com/darts/hyperml/hyperml/job_45403/outputs/effnetb1_pruned_9ebb3fe6.pth',
-        input_size=(3, 240, 240), pool_size=(8, 8), crop_pct=0.882, mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD),
-    'efficientnet_b2_pruned': _cfg(
-        url='https://imvl-automl-sh.oss-cn-shanghai.aliyuncs.com/darts/hyperml/hyperml/job_45403/outputs/effnetb2_pruned_203f55bc.pth',
-        input_size=(3, 260, 260), pool_size=(9, 9), crop_pct=0.890, mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD),
-    'efficientnet_b3_pruned': _cfg(
-        url='https://imvl-automl-sh.oss-cn-shanghai.aliyuncs.com/darts/hyperml/hyperml/job_45403/outputs/effnetb3_pruned_5abcc29f.pth',
-        input_size=(3, 300, 300), pool_size=(10, 10), crop_pct=0.904, mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD),
 
     'tf_efficientnet_b0': _cfg(
         url='https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-weights/tf_efficientnet_b0_aa-827b6e33.pth',
@@ -343,6 +328,7 @@ class EfficientNet(nn.Module):
         # Stem
         if not fix_stem:
             stem_size = round_channels(stem_size, channel_multiplier, channel_divisor, channel_min)
+        print(stem_size)
         self.conv_stem = create_conv2d(self._in_chs, stem_size, 3, stride=2, padding=pad_type)
         self.bn1 = norm_layer(stem_size, **norm_kwargs)
         self.act1 = act_layer(inplace=True)
@@ -357,16 +343,10 @@ class EfficientNet(nn.Module):
         self._in_chs = builder.in_chs
 
         # Head + Pooling
-        # self.conv_head = create_conv2d(self._in_chs, self.num_features, 1, padding=pad_type)
-        # self.bn2 = norm_layer(self.num_features, **norm_kwargs)
-        # self.act2 = act_layer(inplace=True)
-        # # layers = [self.conv_head, self.bn2, self.act2]
-        # # self.final_layer = nn.Sequential(*layers)
-        layer = InvertedResidual_easy(self._in_chs, self.num_features, pad_type, norm_kwargs, norm_layer, act_layer)
-        layers = [layer]
-        self.final_layers = nn.Sequential(*layers)
+        self.conv_head = create_conv2d(self._in_chs, self.num_features, 1, padding=pad_type)
+        self.bn2 = norm_layer(self.num_features, **norm_kwargs)
+        self.act2 = act_layer(inplace=True)
         self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
-
 
         # Classifier
         self.classifier = nn.Linear(self.num_features * self.global_pool.feat_mult(), self.num_classes)
@@ -376,9 +356,8 @@ class EfficientNet(nn.Module):
     def as_sequential(self):
         layers = [self.conv_stem, self.bn1, self.act1]
         layers.extend(self.blocks)
-        # layers.extend([self.conv_head, self.bn2, self.act2])
-        layers.extend(self.final_layers)
-        layers.extend([self.global_pool, nn.Flatten(), nn.Dropout(self.drop_rate), self.classifier])
+        layers.extend([self.conv_head, self.bn2, self.act2, self.global_pool])
+        layers.extend([nn.Flatten(), nn.Dropout(self.drop_rate), self.classifier])
         return nn.Sequential(*layers)
 
     def get_classifier(self):
@@ -387,21 +366,17 @@ class EfficientNet(nn.Module):
     def reset_classifier(self, num_classes, global_pool='avg'):
         self.num_classes = num_classes
         self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
-        if num_classes:
-            num_features = self.num_features * self.global_pool.feat_mult()
-            self.classifier = nn.Linear(num_features, num_classes)
-        else:
-            self.classifier = nn.Identity()
+        self.classifier = nn.Linear(
+            self.num_features * self.global_pool.feat_mult(), num_classes) if num_classes else None
 
     def forward_features(self, x):
         x = self.conv_stem(x)
         x = self.bn1(x)
         x = self.act1(x)
         x = self.blocks(x)
-        # x = self.conv_head(x)
-        # x = self.bn2(x)
-        # x = self.act2(x)
-        x = self.final_layers(x)
+        x = self.conv_head(x)
+        x = self.bn2(x)
+        x = self.act2(x)
         return x
 
     def forward(self, x):
@@ -420,7 +395,7 @@ class EfficientNetFeatures(nn.Module):
     and object detection models.
     """
 
-    def __init__(self, block_args, out_indices=(0, 1, 2, 3, 4), feature_location='bottleneck',
+    def __init__(self, block_args, out_indices=(0, 1, 2, 3, 4), feature_location='pre_pwl',
                  in_chans=3, stem_size=32, channel_multiplier=1.0, channel_divisor=8, channel_min=None,
                  output_stride=32, pad_type='', fix_stem=False, act_layer=nn.ReLU, drop_rate=0., drop_path_rate=0.,
                  se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None):
@@ -431,7 +406,6 @@ class EfficientNetFeatures(nn.Module):
         num_stages = max(out_indices) + 1
 
         self.out_indices = out_indices
-        self.feature_location = feature_location
         self.drop_rate = drop_rate
         self._in_chs = in_chans
 
@@ -448,23 +422,18 @@ class EfficientNetFeatures(nn.Module):
             channel_multiplier, channel_divisor, channel_min, output_stride, pad_type, act_layer, se_kwargs,
             norm_layer, norm_kwargs, drop_path_rate, feature_location=feature_location, verbose=_DEBUG)
         self.blocks = nn.Sequential(*builder(self._in_chs, block_args))
-        self._feature_info = builder.features  # builder provides info about feature channels for each block
-        self._stage_to_feature_idx = {
-            v['stage_idx']: fi for fi, v in self._feature_info.items() if fi in self.out_indices}
+        self.feature_info = builder.features  # builder provides info about feature channels for each block
         self._in_chs = builder.in_chs
 
         efficientnet_init_weights(self)
         if _DEBUG:
-            for k, v in self._feature_info.items():
+            for k, v in self.feature_info.items():
                 print('Feature idx: {}: Name: {}, Channels: {}'.format(k, v['name'], v['num_chs']))
 
         # Register feature extraction hooks with FeatureHooks helper
-        self.feature_hooks = None
-        if feature_location != 'bottleneck':
-            hooks = [dict(
-                name=self._feature_info[idx]['module'],
-                type=self._feature_info[idx]['hook_type']) for idx in out_indices]
-            self.feature_hooks = FeatureHooks(hooks, self.named_modules())
+        hook_type = 'forward_pre' if feature_location == 'pre_pwl' else 'forward'
+        hooks = [dict(name=self.feature_info[idx]['name'], type=hook_type) for idx in out_indices]
+        self.feature_hooks = FeatureHooks(hooks, self.named_modules())
 
     def feature_channels(self, idx=None):
         """ Feature Channel Shortcut
@@ -472,32 +441,15 @@ class EfficientNetFeatures(nn.Module):
         return feature channel count for that feature block index (independent of out_indices setting).
         """
         if isinstance(idx, int):
-            return self._feature_info[idx]['num_chs']
-        return [self._feature_info[i]['num_chs'] for i in self.out_indices]
+            return self.feature_info[idx]['num_chs']
+        return [self.feature_info[i]['num_chs'] for i in self.out_indices]
 
-    def feature_info(self, idx=None):
-        """ Feature Channel Shortcut
-        Returns feature channel count for each output index if idx == None. If idx is an integer, will
-        return feature channel count for that feature block index (independent of out_indices setting).
-        """
-        if isinstance(idx, int):
-            return self._feature_info[idx]
-        return [self._feature_info[i] for i in self.out_indices]
-
-    def forward(self, x) -> List[torch.Tensor]:
+    def forward(self, x):
         x = self.conv_stem(x)
         x = self.bn1(x)
         x = self.act1(x)
-        if self.feature_hooks is None:
-            features = []
-            for i, b in enumerate(self.blocks):
-                x = b(x)
-                if i in self._stage_to_feature_idx:
-                    features.append(x)
-            return features
-        else:
-            self.blocks(x)
-            return self.feature_hooks.get_output(x.device)
+        self.blocks(x)
+        return self.feature_hooks.get_output(x.device)
 
 
 def _create_model(model_kwargs, default_cfg, pretrained=False):
@@ -510,11 +462,9 @@ def _create_model(model_kwargs, default_cfg, pretrained=False):
     else:
         load_strict = True
         model_class = EfficientNet
-    variant = model_kwargs.pop('variant', '')
+
     model = model_class(**model_kwargs)
     model.default_cfg = default_cfg
-    if '_pruned' in variant:
-        model = adapt_model_from_file(model, variant)
     if pretrained:
         load_pretrained(
             model,
@@ -648,7 +598,7 @@ def _gen_mobilenet_v2(
         fix_stem=fix_stem_head,
         channel_multiplier=channel_multiplier,
         norm_kwargs=resolve_bn_args(kwargs),
-        act_layer=resolve_act_layer(kwargs, 'relu6'),
+        act_layer=nn.ReLU6,
         **kwargs
     )
     model = _create_model(model_kwargs, default_cfgs[variant], pretrained)
@@ -758,9 +708,8 @@ def _gen_efficientnet(variant, channel_multiplier=1.0, depth_multiplier=1.0, pre
         num_features=round_channels(1280, channel_multiplier, 8, None),
         stem_size=32,
         channel_multiplier=channel_multiplier,
-        act_layer=resolve_act_layer(kwargs, 'swish'),
+        act_layer=Swish,
         norm_kwargs=resolve_bn_args(kwargs),
-        variant=variant,
         **kwargs,
     )
     model = _create_model(model_kwargs, default_cfgs[variant], pretrained)
@@ -789,7 +738,7 @@ def _gen_efficientnet_edge(variant, channel_multiplier=1.0, depth_multiplier=1.0
         stem_size=32,
         channel_multiplier=channel_multiplier,
         norm_kwargs=resolve_bn_args(kwargs),
-        act_layer=resolve_act_layer(kwargs, 'relu'),
+        act_layer=nn.ReLU,
         **kwargs,
     )
     model = _create_model(model_kwargs, default_cfgs[variant], pretrained)
@@ -803,13 +752,13 @@ def _gen_efficientnet_condconv(
     Ref impl: https://github.com/tensorflow/tpu/tree/master/models/official/efficientnet/condconv
     """
     arch_def = [
-        ['ds_r1_k3_s1_e1_c16_se0.25'],
-        ['ir_r2_k3_s2_e6_c24_se0.25'],
-        ['ir_r2_k5_s2_e6_c40_se0.25'],
-        ['ir_r3_k3_s2_e6_c80_se0.25'],
-        ['ir_r3_k5_s1_e6_c112_se0.25_cc4'],
-        ['ir_r4_k5_s2_e6_c192_se0.25_cc4'],
-        ['ir_r1_k3_s1_e6_c320_se0.25_cc4'],
+      ['ds_r1_k3_s1_e1_c16_se0.25'],
+      ['ir_r2_k3_s2_e6_c24_se0.25'],
+      ['ir_r2_k5_s2_e6_c40_se0.25'],
+      ['ir_r3_k3_s2_e6_c80_se0.25'],
+      ['ir_r3_k5_s1_e6_c112_se0.25_cc4'],
+      ['ir_r4_k5_s2_e6_c192_se0.25_cc4'],
+      ['ir_r1_k3_s1_e6_c320_se0.25_cc4'],
     ]
     # NOTE unlike official impl, this one uses `cc<x>` option where x is the base number of experts for each stage and
     # the expert_multiplier increases that on a per-model basis as with depth/channel multipliers
@@ -819,7 +768,7 @@ def _gen_efficientnet_condconv(
         stem_size=32,
         channel_multiplier=channel_multiplier,
         norm_kwargs=resolve_bn_args(kwargs),
-        act_layer=resolve_act_layer(kwargs, 'swish'),
+        act_layer=Swish,
         **kwargs,
     )
     model = _create_model(model_kwargs, default_cfgs[variant], pretrained)
@@ -859,7 +808,7 @@ def _gen_efficientnet_lite(variant, channel_multiplier=1.0, depth_multiplier=1.0
         stem_size=32,
         fix_stem=True,
         channel_multiplier=channel_multiplier,
-        act_layer=resolve_act_layer(kwargs, 'relu6'),
+        act_layer=nn.ReLU6,
         norm_kwargs=resolve_bn_args(kwargs),
         **kwargs,
     )
@@ -1219,7 +1168,6 @@ def efficientnet_cc_b0_8e(pretrained=False, **kwargs):
         pretrained=pretrained, **kwargs)
     return model
 
-
 @register_model
 def efficientnet_cc_b1_8e(pretrained=False, **kwargs):
     """ EfficientNet-CondConv-B1 w/ 8 Experts """
@@ -1272,37 +1220,6 @@ def efficientnet_lite4(pretrained=False, **kwargs):
     # NOTE for train, drop_rate should be 0.4, drop_path_rate should be 0.2
     model = _gen_efficientnet_lite(
         'efficientnet_lite4', channel_multiplier=1.4, depth_multiplier=1.8, pretrained=pretrained, **kwargs)
-    return model
-
-
-@register_model
-def efficientnet_b1_pruned(pretrained=False, **kwargs):
-    """ EfficientNet-B1 Pruned. The pruning has been obtained using https://arxiv.org/pdf/2002.08258.pdf  """
-    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
-    kwargs['pad_type'] = 'same'
-    variant = 'efficientnet_b1_pruned'
-    model = _gen_efficientnet(
-        variant, channel_multiplier=1.0, depth_multiplier=1.1, pretrained=pretrained, **kwargs)
-    return model
-
-
-@register_model
-def efficientnet_b2_pruned(pretrained=False, **kwargs):
-    """ EfficientNet-B2 Pruned. The pruning has been obtained using https://arxiv.org/pdf/2002.08258.pdf """
-    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
-    kwargs['pad_type'] = 'same'
-    model = _gen_efficientnet(
-        'efficientnet_b2_pruned', channel_multiplier=1.1, depth_multiplier=1.2, pretrained=pretrained, **kwargs)
-    return model
-
-
-@register_model
-def efficientnet_b3_pruned(pretrained=False, **kwargs):
-    """ EfficientNet-B3 Pruned. The pruning has been obtained using https://arxiv.org/pdf/2002.08258.pdf """
-    kwargs['bn_eps'] = BN_EPS_TF_DEFAULT
-    kwargs['pad_type'] = 'same'
-    model = _gen_efficientnet(
-        'efficientnet_b3_pruned', channel_multiplier=1.2, depth_multiplier=1.4, pretrained=pretrained, **kwargs)
     return model
 
 
@@ -1648,7 +1565,6 @@ def tf_efficientnet_cc_b0_8e(pretrained=False, **kwargs):
         pretrained=pretrained, **kwargs)
     return model
 
-
 @register_model
 def tf_efficientnet_cc_b1_8e(pretrained=False, **kwargs):
     """ EfficientNet-CondConv-B1 w/ 8 Experts. Tensorflow compatible variant """
@@ -1794,3 +1710,4 @@ def tf_mixnet_l(pretrained=False, **kwargs):
     model = _gen_mixnet_m(
         'tf_mixnet_l', channel_multiplier=1.3, pretrained=pretrained, **kwargs)
     return model
+

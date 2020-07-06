@@ -28,7 +28,8 @@ except ImportError:
     from torch.nn.parallel import DistributedDataParallel as DDP
     has_apex = False
 
-from timm.data import Dataset, create_loader, resolve_data_config, FastCollateMixup, mixup_batch, AugMixDataset
+from timm.data import Dataset, create_loader, resolve_data_config, FastCollateMixup, mixup_batch, AugMixDataset, Binocular_Dataset
+# from timm.data import Binocular_Dataset
 from timm.models import create_model, resume_checkpoint, convert_splitbn_model
 from timm.utils import *
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCrossEntropy
@@ -51,9 +52,9 @@ parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 # Dataset / Model parameters
-parser.add_argument('data', metavar='DIR',
-                    help='path to dataset')
-parser.add_argument('--model', default='resnet101', type=str, metavar='MODEL',
+parser.add_argument('--data', default='/home/night/Datasets/face/face_mask', metavar='DIR',
+                    help='path to dataset')   # './Datasets/cat_and_dog'   '/home/night/Datasets/demo'
+parser.add_argument('--model', default='shufflev2_se_100', type=str, metavar='MODEL',
                     help='Name of model to train (default: "countception"')
 parser.add_argument('--pretrained', action='store_true', default=False,
                     help='Start with pretrained version of specified network (if avail)')
@@ -63,12 +64,15 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='Resume full model and optimizer state from checkpoint (default: none)')
 parser.add_argument('--no-resume-opt', action='store_true', default=False,
                     help='prevent resume of optimizer state when resuming model')
-parser.add_argument('--num-classes', type=int, default=1000, metavar='N',
+parser.add_argument('--num-classes', type=int, default=2, metavar='N',
                     help='number of label classes (default: 1000)')
 parser.add_argument('--gp', default='avg', type=str, metavar='POOL',
                     help='Type of global pool, "avg", "max", "avgmax", "avgmaxc" (default: "avg")')
-parser.add_argument('--img-size', type=int, default=None, metavar='N',
+parser.add_argument('--cls-assignment', type=str, default='normal',
+                    help='the type of classification assignment used for choosing input channel and choosing dataloader mode(option:"normal","bincamera")')
+parser.add_argument('--img-size', type=int, default=224, metavar='S',
                     help='Image patch size (default: None => model default)')
+parser.add_argument('--input-channel', type=int, default=3, help='Image channel size')
 parser.add_argument('--crop-pct', default=None, type=float,
                     metavar='N', help='Input image center crop percent (for validation only)')
 parser.add_argument('--mean', type=float, nargs='+', default=None, metavar='MEAN',
@@ -77,11 +81,11 @@ parser.add_argument('--std', type=float, nargs='+', default=None, metavar='STD',
                     help='Override std deviation of of dataset')
 parser.add_argument('--interpolation', default='', type=str, metavar='NAME',
                     help='Image resize interpolation type (overrides model)')
-parser.add_argument('-b', '--batch-size', type=int, default=32, metavar='N',
+parser.add_argument('-b', '--batch-size', type=int, default=16, metavar='N',
                     help='input batch size for training (default: 32)')
 parser.add_argument('-vb', '--validation-batch-size-multiplier', type=int, default=1, metavar='N',
                     help='ratio of validation batch size to training batch size (default: 1)')
-parser.add_argument('--drop', type=float, default=0.0, metavar='PCT',
+parser.add_argument('--drop', type=float, default=0.3, metavar='PCT',
                     help='Dropout rate (default: 0.)')
 parser.add_argument('--drop-connect', type=float, default=None, metavar='PCT',
                     help='Drop connect rate, DEPRECATED, use drop-path (default: None)')
@@ -92,18 +96,18 @@ parser.add_argument('--drop-block', type=float, default=None, metavar='PCT',
 parser.add_argument('--jsd', action='store_true', default=False,
                     help='Enable Jensen-Shannon Divergence + CE loss. Use with `--aug-splits`.')
 # Optimizer parameters
-parser.add_argument('--opt', default='sgd', type=str, metavar='OPTIMIZER',
-                    help='Optimizer (default: "sgd"')
+parser.add_argument('--opt', default='rmsprop', type=str, metavar='OPTIMIZER',
+                    help='Optimizer (default: "rmsprop"')
 parser.add_argument('--opt-eps', default=1e-8, type=float, metavar='EPSILON',
                     help='Optimizer Epsilon (default: 1e-8)')
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
-                    help='SGD momentum (default: 0.9)')
-parser.add_argument('--weight-decay', type=float, default=0.0001,
+                    help='SGD momentum (default: 0.9),RMSprop momentum (default: 0.9)')
+parser.add_argument('--weight-decay', type=float, default=0.00004,
                     help='weight decay (default: 0.0001)')
 # Learning rate schedule parameters
 parser.add_argument('--sched', default='step', type=str, metavar='SCHEDULER',
                     help='LR scheduler (default: "step"')
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.0001, metavar='LR',
                     help='learning rate (default: 0.01)')
 parser.add_argument('--lr-noise', type=float, nargs='+', default=None, metavar='pct, pct',
                     help='learning rate noise on/off epoch percentages')
@@ -115,9 +119,9 @@ parser.add_argument('--lr-cycle-mul', type=float, default=1.0, metavar='MULT',
                     help='learning rate cycle len multiplier (default: 1.0)')
 parser.add_argument('--lr-cycle-limit', type=int, default=1, metavar='N',
                     help='learning rate cycle limit')
-parser.add_argument('--warmup-lr', type=float, default=0.0001, metavar='LR',
+parser.add_argument('--warmup-lr', type=float, default=0.00005, metavar='LR',
                     help='warmup learning rate (default: 0.0001)')
-parser.add_argument('--min-lr', type=float, default=1e-5, metavar='LR',
+parser.add_argument('--min-lr', type=float, default=1e-7, metavar='LR',
                     help='lower lr bound for cyclic schedulers that hit 0 (1e-5)')
 parser.add_argument('--epochs', type=int, default=200, metavar='N',
                     help='number of epochs to train (default: 2)')
@@ -125,7 +129,7 @@ parser.add_argument('--start-epoch', default=None, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('--decay-epochs', type=float, default=30, metavar='N',
                     help='epoch interval to decay LR')
-parser.add_argument('--warmup-epochs', type=int, default=3, metavar='N',
+parser.add_argument('--warmup-epochs', type=int, default=2, metavar='N',
                     help='epochs to warmup LR, if scheduler supports')
 parser.add_argument('--cooldown-epochs', type=int, default=10, metavar='N',
                     help='epochs to cooldown LR at min_lr, after cyclic schedule ends')
@@ -152,7 +156,7 @@ parser.add_argument('--mixup', type=float, default=0.0,
                     help='mixup alpha, mixup enabled if > 0. (default: 0.)')
 parser.add_argument('--mixup-off-epoch', default=0, type=int, metavar='N',
                     help='turn off mixup after this epoch, disabled if 0 (default: 0)')
-parser.add_argument('--smoothing', type=float, default=0.1,
+parser.add_argument('--smoothing', type=float, default=False,
                     help='label smoothing (default: 0.1)')
 parser.add_argument('--train-interpolation', type=str, default='random',
                     help='Training interpolation (random, bilinear, bicubic default: "random")')
@@ -177,7 +181,7 @@ parser.add_argument('--model-ema-force-cpu', action='store_true', default=False,
 parser.add_argument('--model-ema-decay', type=float, default=0.9998,
                     help='decay factor for model weights moving average (default: 0.9998)')
 # Misc
-parser.add_argument('--seed', type=int, default=42, metavar='S',
+parser.add_argument('--seed', type=int, default=52, metavar='S',
                     help='random seed (default: 42)')
 parser.add_argument('--log-interval', type=int, default=50, metavar='N',
                     help='how many batches to wait before logging training status')
@@ -193,9 +197,9 @@ parser.add_argument('--amp', action='store_true', default=False,
                     help='use NVIDIA amp for mixed precision training')
 parser.add_argument('--pin-mem', action='store_true', default=False,
                     help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
-parser.add_argument('--no-prefetcher', action='store_true', default=False,
+parser.add_argument('--no-prefetcher', action='store_true', default=True,
                     help='disable fast prefetcher')
-parser.add_argument('--output', default='', type=str, metavar='PATH',
+parser.add_argument('--output', default='./checkpoints', type=str, metavar='PATH',
                     help='path to output folder (default: none, current dir)')
 parser.add_argument('--eval-metric', default='top1', type=str, metavar='EVAL_METRIC',
                     help='Best metric (default: "top1"')
@@ -259,6 +263,7 @@ def main():
         args.model,
         pretrained=args.pretrained,
         num_classes=args.num_classes,
+        in_chans=args.input_channel,
         drop_rate=args.drop,
         drop_connect_rate=args.drop_connect,  # DEPRECATED, use drop_path
         drop_path_rate=args.drop_path,
@@ -367,7 +372,10 @@ def main():
     if not os.path.exists(train_dir):
         logging.error('Training folder does not exist at: {}'.format(train_dir))
         exit(1)
-    dataset_train = Dataset(train_dir)
+    if args.cls_assignment == 'normal':
+        dataset_train = Dataset(train_dir)
+    elif args.cls_assignment == 'Bincamera':
+        dataset_train = Binocular_Dataset(train_dir)
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
@@ -406,7 +414,10 @@ def main():
         if not os.path.isdir(eval_dir):
             logging.error('Validation folder does not exist at: {}'.format(eval_dir))
             exit(1)
-    dataset_eval = Dataset(eval_dir)
+    if args.cls_assignment == 'normal':
+        dataset_eval = Dataset(eval_dir)
+    elif args.cls_assignment == 'Bincamera':
+        dataset_eval = Binocular_Dataset(eval_dir)
 
     loader_eval = create_loader(
         dataset_eval,
@@ -603,8 +614,12 @@ def train_epoch(
 def validate(model, loader, loss_fn, args, log_suffix=''):
     batch_time_m = AverageMeter()
     losses_m = AverageMeter()
+    # prec1_m = AverageMeter()
+    # prec2_m = AverageMeter()   # 修改了
+    # # prec5_m = AverageMeter()
     top1_m = AverageMeter()
-    top5_m = AverageMeter()
+    top2_m = AverageMeter()      # 修改了
+    # top5_m = AverageMeter()
 
     model.eval()
 
@@ -628,20 +643,36 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
                 target = target[0:target.size(0):reduce_factor]
 
             loss = loss_fn(output, target)
-            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            # 修改了
+            # # prec1, prec5 = accuracy(output, target, topk=(1, 5))
+            # prec1, prec2 = accuracy(output, target, topk=(1, 2))
+            # acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            acc1, acc2 = accuracy(output, target, topk=(1, 2))
 
             if args.distributed:
                 reduced_loss = reduce_tensor(loss.data, args.world_size)
+                # prec1 = reduce_tensor(prec1, args.world_size)
+                ## 修改了
+                ## prec5 = reduce_tensor(prec5, args.world_size)
+                # prec2 = reduce_tensor(prec2, args.world_size)
                 acc1 = reduce_tensor(acc1, args.world_size)
-                acc5 = reduce_tensor(acc5, args.world_size)
+                # 修改了
+                # acc5 = reduce_tensor(acc5, args.world_size)
+                acc2 = reduce_tensor(acc2, args.world_size)
             else:
                 reduced_loss = loss.data
 
             torch.cuda.synchronize()
 
             losses_m.update(reduced_loss.item(), input.size(0))
+            # prec1_m.update(prec1.item(), output.size(0))
+            # # 修改了
+            # # prec5_m.update(prec5.item(), output.size(0))
+            # prec2_m.update(prec2.item(), output.size(0))
             top1_m.update(acc1.item(), output.size(0))
-            top5_m.update(acc5.item(), output.size(0))
+            # 修改了
+            # top5_m.update(acc5.item(), output.size(0))
+            top2_m.update(acc2.item(), output.size(0))
 
             batch_time_m.update(time.time() - end)
             end = time.time()
@@ -651,12 +682,18 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
                     '{0}: [{1:>4d}/{2}]  '
                     'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
                     'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
+                    # 'Prec@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
+                    # 'Prec@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
+                    #     log_name, batch_idx, last_idx,
+                    #     batch_time=batch_time_m, loss=losses_m,
+                    #     top1=prec1_m, top5=prec2_m))   # 修改了  , top5=prec5_m
                     'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
                     'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
                         log_name, batch_idx, last_idx, batch_time=batch_time_m,
-                        loss=losses_m, top1=top1_m, top5=top5_m))
+                        loss=losses_m, top1=top1_m, top5=top2_m))    # 修改了   top5=top5_m
 
-    metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
+    # metrics = OrderedDict([('loss', losses_m.avg), ('prec1', prec1_m.avg), ('prec2', prec2_m.avg)])    # 修改了   ('prec5', prec5_m.avg)
+    metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top2', top2_m.avg)])          # 修改了   ('top5', top5_m.avg)
 
     return metrics
 
