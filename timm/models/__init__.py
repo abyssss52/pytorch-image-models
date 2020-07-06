@@ -17,6 +17,7 @@ from .res2net import *
 from .dla import *
 from .hrnet import *
 from .sknet import *
+from .shufflenet_v2 import *
 from .tresnet import *
 from .resnest import *
 from .regnet import *

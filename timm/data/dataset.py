@@ -6,8 +6,10 @@ import torch.utils.data as data
 
 import os
 import re
+import numpy as np
 import torch
 import tarfile
+import cv2
 from PIL import Image
 
 
@@ -22,17 +24,24 @@ def natural_key(string_):
 def find_images_and_targets(folder, types=IMG_EXTENSIONS, class_to_idx=None, leaf_name_only=True, sort=True):
     labels = []
     filenames = []
+    num = 0
     for root, subdirs, files in os.walk(folder, topdown=False):
+        num += 1
+        # print('进来的次数：%d'%num)
         rel_path = os.path.relpath(root, folder) if (root != folder) else ''
         label = os.path.basename(rel_path) if leaf_name_only else rel_path.replace(os.path.sep, '_')
+        # print(label)
         for f in files:
             base, ext = os.path.splitext(f)
             if ext.lower() in types:
                 filenames.append(os.path.join(root, f))
                 labels.append(label)
+        if num == 2:
+            print(labels)
     if class_to_idx is None:
         # building class index
         unique_labels = set(labels)
+        # print(unique_labels)
         sorted_labels = list(sorted(unique_labels, key=natural_key))
         class_to_idx = {c: idx for idx, c in enumerate(sorted_labels)}
     images_and_targets = zip(filenames, [class_to_idx[l] for l in labels])
@@ -90,6 +99,67 @@ class Dataset(data.Dataset):
 
     def __len__(self):
         return len(self.imgs)
+
+    def filenames(self, indices=[], basename=False):
+        if indices:
+            if basename:
+                return [os.path.basename(self.samples[i][0]) for i in indices]
+            else:
+                return [self.samples[i][0] for i in indices]
+        else:
+            if basename:
+                return [os.path.basename(x[0]) for x in self.samples]
+            else:
+                return [x[0] for x in self.samples]
+
+class Binocular_Dataset(data.Dataset):
+
+    def __init__(
+            self,
+            root,
+            load_bytes=False,
+            transform=None,
+            class_map=''):
+
+        class_to_idx = None
+        if class_map:
+            class_to_idx = load_class_map(class_map, root)
+        images, class_to_idx = find_images_and_targets(root, class_to_idx=class_to_idx)
+        if len(images) == 0:
+            raise(RuntimeError("Found 0 images in subfolders of: " + root + "\n"
+                               "Supported image extensions are: " + ",".join(IMG_EXTENSIONS)))
+        self.root = root
+        self.samples = images
+        self.imgs = self.samples  # torchvision ImageFolder compat
+        self.class_to_idx = class_to_idx
+        self.load_bytes = load_bytes
+        self.transform = transform
+
+    def __getitem__(self, index):
+        path, target = self.samples[index * 2]             # 取该路径下的彩色图片的地址
+        img_ori = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')  # 读取图片
+        if self.transform is not None:
+            img_ori = self.transform(img_ori)              # 对图片进行transform
+        img_ori = np.array(img_ori).astype(np.float32)     # Image 格式图片转换成array
+        # if target is None:
+        #     target = torch.zeros(1).long()
+        path, target = self.samples[index * 2 + 1]         # 取该路径下的红外图片的地址
+        img_ir = open(path, 'rb').read() if self.load_bytes else Image.open(path).convert('RGB')   # 读取图片
+        if self.transform is not None:
+            img_ir = self.transform(img_ir)                # 对图片进行transform
+        img_ir = np.array(img_ir).astype(np.float32)       # Image 格式图片转换成array
+        img_ir = img_ir[0, :, :]                           # 取第一个通道的数据
+        img_ir = img_ir[np.newaxis, :]                     # 增加一个维度
+        # print(img_ir)
+        if target is None:
+            target = torch.zeros(1).long()
+        img = np.concatenate([img_ori,img_ir], axis=0)     # 原彩图与红外图叠加，组成4通道
+        # print(img.shape)
+        img = torch.from_numpy(img)                        # array转化成torch.tensor
+        return img, target
+
+    def __len__(self):
+        return int(len(self.imgs)/2)
 
     def filenames(self, indices=[], basename=False):
         if indices:

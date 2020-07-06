@@ -26,8 +26,8 @@ def _cfg(url='', **kwargs):
 
 
 default_cfgs = {
-    'shufflev2_se_100': _cfg(url=''),
-    'shufflev2_100': _cfg(url='')
+    'shufflenetv2_se_100': _cfg(url=''),
+    'shufflenetv2_100': _cfg(url='')
 
 }
 
@@ -307,11 +307,11 @@ def _filter_pretrained(state_dict):
 
 
 @register_model
-def shufflev2_se_100(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    r"""Shuffle_v2 model from
+def shufflenetv2_se_100(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+    r"""ShuffleNet_v2 model from
     `"ShuffleNet V2: Practical Guidelines for Efficient CNN Architecture Design" <https://arxiv.org/pdf/1807.11164.pdf>`
     """
-    default_cfg = default_cfgs['shufflev2_se_100']
+    default_cfg = default_cfgs['shufflenetv2_se_100']
     model = ShuffleNetV2(scale=1.0, in_chans=in_chans, num_classes=2, SE=True, residual=True, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
@@ -320,11 +320,11 @@ def shufflev2_se_100(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
 
 
 @register_model
-def shufflev2_100(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
-    r"""Shuffle_v2 model from
+def shufflenetv2_100(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
+    r"""ShuffleNet_v2 model from
     `"ShuffleNet V2: Practical Guidelines for Efficient CNN Architecture Design" <https://arxiv.org/pdf/1807.11164.pdf>`
     """
-    default_cfg = default_cfgs['shufflev2_100']
+    default_cfg = default_cfgs['shufflenetv2_100']
     model = ShuffleNetV2(scale=1.0, in_chans=in_chans, num_classes=2, SE=False, residual=True, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
