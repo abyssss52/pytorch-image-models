@@ -54,7 +54,7 @@ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 # Dataset / Model parameters
 parser.add_argument('--data', default='/home/night/Datasets/face/face_mask', metavar='DIR',
                     help='path to dataset')   # './Datasets/cat_and_dog'   '/home/night/Datasets/demo'
-parser.add_argument('--model', default='shufflenetv2_se_100', type=str, metavar='MODEL',
+parser.add_argument('--model', default='shufflenetv2_100', type=str, metavar='MODEL',
                     help='Name of model to train (default: "countception"')
 parser.add_argument('--pretrained', action='store_true', default=False,
                     help='Start with pretrained version of specified network (if avail)')
@@ -187,7 +187,7 @@ parser.add_argument('--log-interval', type=int, default=50, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--recovery-interval', type=int, default=0, metavar='N',
                     help='how many batches to wait before writing recovery checkpoint')
-parser.add_argument('-j', '--workers', type=int, default=4, metavar='N',
+parser.add_argument('-j', '--workers', type=int, default=0, metavar='N',
                     help='how many training processes to use (default: 1)')
 parser.add_argument('--num-gpu', type=int, default=1,
                     help='Number of GPUS to use')
