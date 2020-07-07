@@ -1,3 +1,8 @@
+"""Pytorch impl of ShuffleNetV2/SE
+This file evolved from https://github.com/Randl/ShuffleNetV2-pytorch 'model.py' with (SE)-(Residual) additions
+by Randl
+"""
+
 from collections import OrderedDict
 
 import torch
