@@ -184,7 +184,7 @@ def create_loader(
     loader = loader_class(
         dataset,
         batch_size=batch_size,
-        shuffle=sampler is None and is_training,
+        shuffle=True,          # sampler is None and is_training,
         num_workers=num_workers,
         sampler=sampler,
         collate_fn=collate_fn,

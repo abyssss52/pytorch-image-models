@@ -127,7 +127,7 @@ class BasicUnit(nn.Module):
         if self.SE:
             out = self.SELayer(out)
         if self.residual and self.inplanes == self.outplanes:
-            out += right
+            out = out + right
 
         return channel_shuffle(torch.cat((left, out), 1), self.groups)
 

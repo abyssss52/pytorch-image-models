@@ -36,8 +36,8 @@ def find_images_and_targets(folder, types=IMG_EXTENSIONS, class_to_idx=None, lea
             if ext.lower() in types:
                 filenames.append(os.path.join(root, f))
                 labels.append(label)
-        if num == 2:
-            print(labels)
+        # if num == 2:
+        #     print(labels)
     if class_to_idx is None:
         # building class index
         unique_labels = set(labels)
