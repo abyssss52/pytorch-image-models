@@ -1,3 +1,6 @@
+""" Activation Factory
+Hacked together by / Copyright 2020 Ross Wightman
+"""
 from .activations import *
 from .activations_jit import *
 from .activations_me import *
@@ -43,6 +46,7 @@ _ACT_LAYER_DEFAULT = dict(
     mish=Mish,
     relu=nn.ReLU,
     relu6=nn.ReLU6,
+    leaky_relu=nn.LeakyReLU,
     elu=nn.ELU,
     prelu=nn.PReLU,
     celu=nn.CELU,
