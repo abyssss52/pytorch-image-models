@@ -146,6 +146,7 @@ class GradCam:
         result = ['face', 'mask']
         if index == None:
             index = np.argmax(output.cpu().data.numpy())
+            print(output)
             print('这是:', result[index])
 
         one_hot = np.zeros((1, output.size()[-1]), dtype=np.float32)
@@ -250,14 +251,14 @@ class GuidedBackpropReLUModel:
 
 def get_args():
     parser = argparse.ArgumentParser(description='pytorch CNN visualization by Grad-CAM')
-    parser.add_argument('--model_backbone', type=str, default='mnasnet_small', help='the type of model chosen.')   #  mnasnet_small semnasnet_100  # mobilenetv2_100
+    parser.add_argument('--model_backbone', type=str, default='mobilenetv2_100', help='the type of model chosen.')   #  mnasnet_small semnasnet_100  # mobilenetv2_100  # shufflenetv2_100
     parser.add_argument('--classes_num', type=int, default=2, help='the number of classification class.')
     parser.add_argument('--input_channel', type=int, default=3, help='the number of input channel.')
     parser.add_argument('--input_size', type=int, default=224, help='the size of input.')
     parser.add_argument('--torch_model',
-                        default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/MNASNet_small/checkpoint-51.pth.tar')    # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-63_new.pth.tar' # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #   # './checkpoints/train/20200319-182337-mobilenetv2_100-224/checkpoint-14.pth.tar'
+                        default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-62.pth.tar')    # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/ShuffleNetv2_100/checkpoint-57.pth.tar'  # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-63_new.pth.tar' # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #   # './checkpoints/train/20200319-182337-mobilenetv2_100-224/checkpoint-14.pth.tar'
     parser.add_argument('--use-cuda', default=True, help='Use NVIDIA GPU acceleration')
-    parser.add_argument('--image-path', type=str, default='/home/night/图片/temp/face_mask/',
+    parser.add_argument('--image-path', type=str, default='/home/night/abyss52/work/Test_data/face_mask/tmp',
                         help='Input image path')    # '/home/night/Datasets/face/face_mask/val/face'
     args = parser.parse_args()
     args.use_cuda = args.use_cuda and torch.cuda.is_available()

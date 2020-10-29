@@ -32,7 +32,7 @@ def _cfg(url='', **kwargs):
 
 default_cfgs = {
     'shufflenetv2_se_100': _cfg(url=''),
-    'shufflenetv2_100': _cfg(url='')
+    'shufflenetv2_100': _cfg(url='https://download.pytorch.org/models/shufflenetv2_x1-5666bf0f80.pth')
 
 }
 
@@ -215,7 +215,7 @@ class ShuffleNetV2(nn.Module):
         self.num_of_channels = {0.5: [24, 48, 96, 192, 1024], 1: [24, 116, 232, 464, 1024],
                                 1.5: [24, 176, 352, 704, 1024], 2: [24, 244, 488, 976, 2048]}
         self.c = [_make_divisible(chan, groups) for chan in self.num_of_channels[scale]]
-        self.n = [3, 8, 3]  # TODO: should be [3,7,3]
+        self.n = [3, 7, 3]  # TODO: should be [3,7,3]
         self.conv1 = nn.Conv2d(in_chans, self.c[0], kernel_size=3, bias=False, stride=2, padding=1)
         self.bn1 = nn.BatchNorm2d(self.c[0])
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2)
