@@ -17,13 +17,13 @@ import onnxsim
 
 
 parser = argparse.ArgumentParser(description='pytorch2onnx')
-parser.add_argument('--model_backbone',type=str, default='mnasnet_small',help='the type of model chosen.')     # semnasnet_100  mobilenetv2_100  mnasnet_small
+parser.add_argument('--model_backbone',type=str, default='mobilenetv2_100',help='the type of model chosen.')     # semnasnet_100  mobilenetv2_100  mnasnet_small  shufflenetv2_100
 parser.add_argument('--classes_num', type=int, default=2, help='the number of classification class.')
 parser.add_argument('--input_channel', type=int, default=3, help='the number of input channel.')
 parser.add_argument('--input_size', type=int, default=224, help='the size of input.')
-parser.add_argument('--torch_model', default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/MNASNet_small/checkpoint-51.pth.tar') # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-63_new.pth.tar'  # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #   # './checkpoints/train/20200319-182337-mobilenetv2_100-224/checkpoint-14.pth.tar'
-parser.add_argument('--onnx_model', default="FaceMask5.onnx")    # "mobilenetv2.onnx"    # "FaceAnti-Spoofing.onnx"
-parser.add_argument('--onnx_model_sim', default="FaceMask2-sim.onnx", help='Output ONNX simple model')     # "FaceAnti-Spoofing-sim.onnx"
+parser.add_argument('--torch_model', default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-62.pth.tar') # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/ShuffleNetv2_100/checkpoint-38.pth.tar'  # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #   # './checkpoints/train/20200319-182337-mobilenetv2_100-224/checkpoint-14.pth.tar'
+parser.add_argument('--onnx_model', default="faceMask.onnx")    # "mobilenetv2.onnx"    # "FaceAnti-Spoofing.onnx"
+parser.add_argument('--onnx_model_sim', default="FaceMask-sim.onnx", help='Output ONNX simple model')     # "FaceAnti-Spoofing-sim.onnx"
 args = parser.parse_args()
 
 

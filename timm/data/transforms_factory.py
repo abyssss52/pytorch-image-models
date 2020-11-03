@@ -48,6 +48,7 @@ def transforms_imagenet_train(
         hflip=0.5,
         vflip=0.,
         color_jitter=0.4,
+        affine=None,
         auto_augment=None,
         interpolation='random',
         use_prefetcher=False,
@@ -95,16 +96,32 @@ def transforms_imagenet_train(
             secondary_tfl += [augment_and_mix_transform(auto_augment, aa_params)]
         else:
             secondary_tfl += [auto_augment_transform(auto_augment, aa_params)]
-    elif color_jitter is not None:
+    elif color_jitter is not None or affine is not None:
         # color jitter is enabled when not using AA
-        if isinstance(color_jitter, (list, tuple)):
-            # color jitter should be a 3-tuple/list if spec brightness/contrast/saturation
-            # or 4 if also augmenting hue
-            assert len(color_jitter) in (3, 4)
-        else:
-            # if it's a scalar, duplicate for brightness, contrast, and saturation, no hue
-            color_jitter = (float(color_jitter),) * 3
-        secondary_tfl += [transforms.ColorJitter(*color_jitter)]
+        if color_jitter is not None:
+            if isinstance(color_jitter, (list, tuple)):
+                # color jitter should be a 3-tuple/list if spec brightness/contrast/saturation
+                # or 4 if also augmenting hue
+                assert len(color_jitter) in (3, 4)
+            else:
+                # if it's a scalar, duplicate for brightness, contrast, and saturation, no hue
+                color_jitter = (float(color_jitter),) * 3
+            secondary_tfl += [transforms.ColorJitter(*color_jitter)]
+        if affine is not None:
+            if isinstance(affine, (dict)):
+                # random affine has 6 parameters   degrees/translate/scale/shear/resample/fillcolor
+                degrees = affine.get('degrees')
+                _translate = affine.get('translate')
+                _scale = affine.get('scale')
+                _shear = affine.get('shear')
+                _resample = affine.get('resample', False)
+                _fillcolor = affine.get('fillcolor', 0)
+                secondary_tfl += [transforms.RandomAffine(degrees, translate=_translate, scale=_scale, shear=_shear, resample=_resample, fillcolor=_fillcolor)]
+            else:
+                # if only one parameter, means that only adjust degrees
+                secondary_tfl += [transforms.RandomAffine(affine)]
+
+
 
     final_tfl = []
     if use_prefetcher:
@@ -174,6 +191,7 @@ def create_transform(
         hflip=0.5,
         vflip=0.,
         color_jitter=0.4,
+        affine=None,
         auto_augment=None,
         interpolation='bilinear',
         mean=IMAGENET_DEFAULT_MEAN,
@@ -213,6 +231,7 @@ def create_transform(
                 hflip=hflip,
                 vflip=vflip,
                 color_jitter=color_jitter,
+                affine=affine,
                 auto_augment=auto_augment,
                 interpolation=interpolation,
                 use_prefetcher=use_prefetcher,

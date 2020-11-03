@@ -361,7 +361,7 @@ class EfficientNet(nn.Module):
         # self.act2 = act_layer(inplace=True)
         # # layers = [self.conv_head, self.bn2, self.act2]
         # # self.final_layer = nn.Sequential(*layers)
-        layer = InvertedResidual_easy(self._in_chs, self.num_features, pad_type, norm_kwargs, norm_layer, act_layer)
+        layer = InvertedResidual_easy(head_chs, self.num_features, pad_type, norm_kwargs, norm_layer, act_layer)
         layers = [layer]
         self.final_layers = nn.Sequential(*layers)
 

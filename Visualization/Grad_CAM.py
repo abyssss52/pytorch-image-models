@@ -258,8 +258,8 @@ def get_args():
     parser.add_argument('--torch_model',
                         default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-62.pth.tar')    # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/ShuffleNetv2_100/checkpoint-57.pth.tar'  # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-63_new.pth.tar' # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #   # './checkpoints/train/20200319-182337-mobilenetv2_100-224/checkpoint-14.pth.tar'
     parser.add_argument('--use-cuda', default=True, help='Use NVIDIA GPU acceleration')
-    parser.add_argument('--image-path', type=str, default='/home/night/abyss52/work/Test_data/face_mask/tmp',
-                        help='Input image path')    # '/home/night/Datasets/face/face_mask/val/face'
+    parser.add_argument('--image-path', type=str, default='/home/night/abyss52/work/Test_data/face_mask/test/1',
+                        help='Input image path')    # '/home/night/Datasets/face/face_mask/val/face'    # '/home/night/abyss52/work/Test_data/face_mask/beard'
     args = parser.parse_args()
     args.use_cuda = args.use_cuda and torch.cuda.is_available()
     if args.use_cuda:

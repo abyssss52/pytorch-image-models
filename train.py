@@ -28,7 +28,7 @@ import torch.nn as nn
 import torchvision.utils
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
-from timm.data import Dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
+from timm.data import Dataset, Binocular_Dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 from timm.models import create_model, resume_checkpoint, convert_splitbn_model
 from timm.utils import *
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCrossEntropy
@@ -64,9 +64,9 @@ parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
 # Dataset / Model parameters
-parser.add_argument('--data', default='/home/night/Datasets/face/face_mask', metavar='DIR',
+parser.add_argument('--data', default='/home/night/abyss52/work/Dataset/face/face_mask', metavar='DIR',
                     help='path to dataset')   # './Datasets/cat_and_dog'   '/home/night/Datasets/demo'
-parser.add_argument('--model', default='shufflenetv2_100', type=str, metavar='MODEL',
+parser.add_argument('--model', default='mobilenetv2_100', type=str, metavar='MODEL',
                     help='Name of model to train (default: "countception"')
 parser.add_argument('--pretrained', action='store_true', default=False,
                     help='Start with pretrained version of specified network (if avail)')
@@ -78,7 +78,7 @@ parser.add_argument('--no-resume-opt', action='store_true', default=False,
                     help='prevent resume of optimizer state when resuming model')
 parser.add_argument('--num-classes', type=int, default=2, metavar='N',
                     help='number of label classes (default: 1000)')
-parser.add_argument('--gp', default=None, type=str, metavar='POOL',
+parser.add_argument('--gp', default='avg', type=str, metavar='POOL',
                     help='Global pool type, one of (fast, avg, max, avgmax, avgmaxc). Model default if None.')
 parser.add_argument('--cls-assignment', type=str, default='normal',
                     help='the type of classification assignment used for choosing input channel and choosing dataloader mode(option:"normal","bincamera")')
@@ -93,7 +93,7 @@ parser.add_argument('--std', type=float, nargs='+', default=None, metavar='STD',
                     help='Override std deviation of of dataset')
 parser.add_argument('--interpolation', default='', type=str, metavar='NAME',
                     help='Image resize interpolation type (overrides model)')
-parser.add_argument('-b', '--batch-size', type=int, default=32, metavar='N',
+parser.add_argument('-b', '--batch-size', type=int, default=16, metavar='N',
                     help='input batch size for training (default: 32)')
 parser.add_argument('-vb', '--validation-batch-size-multiplier', type=int, default=1, metavar='N',
                     help='ratio of validation batch size to training batch size (default: 1)')
@@ -101,13 +101,13 @@ parser.add_argument('-vb', '--validation-batch-size-multiplier', type=int, defau
 # Optimizer parameters
 parser.add_argument('--opt', default='rmsprop', type=str, metavar='OPTIMIZER',
                     help='Optimizer (default: "rmsprop"')
-parser.add_argument('--opt-eps', default=None, type=float, metavar='EPSILON',
-                    help='Optimizer Epsilon (default: None, use opt default)')
+parser.add_argument('--opt-eps', default=1e-8, type=float, metavar='EPSILON',
+                    help='Optimizer Epsilon (default: 1e-8, use opt default)')
 parser.add_argument('--opt-betas', default=None, type=float, nargs='+', metavar='BETA',
                     help='Optimizer Betas (default: None, use opt default)')
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                     help='SGD momentum (default: 0.9),RMSprop momentum (default: 0.9)')
-parser.add_argument('--weight-decay', type=float, default=0.0001,
+parser.add_argument('--weight-decay', type=float, default=0.00004,
                     help='weight decay (default: 0.0001)')
 parser.add_argument('--clip-grad', type=float, default=None, metavar='NORM',
                     help='Clip gradient norm (default: None, no clipping)')
@@ -159,15 +159,17 @@ parser.add_argument('--hflip', type=float, default=0.5,
                     help='Horizontal flip training aug probability')
 parser.add_argument('--vflip', type=float, default=0.,
                     help='Vertical flip training aug probability')
-parser.add_argument('--color-jitter', type=float, default=0.4, metavar='PCT',
+parser.add_argument('--color-jitter', type=float, default=[0.7,0.4,0.4], metavar='PCT',
                     help='Color jitter factor (default: 0.4)')
+parser.add_argument('--affine', default=30, metavar='PCT',
+                    help='Random affine factor (default: None)')
 parser.add_argument('--aa', type=str, default=None, metavar='NAME',
                     help='Use AutoAugment policy. "v0" or "original". (default: None)'),
 parser.add_argument('--aug-splits', type=int, default=0,
                     help='Number of augmentation splits (default: 0, valid: 0 or >=2)')
 parser.add_argument('--jsd', action='store_true', default=False,
                     help='Enable Jensen-Shannon Divergence + CE loss. Use with `--aug-splits`.')
-parser.add_argument('--reprob', type=float, default=0., metavar='PCT',
+parser.add_argument('--reprob', type=float, default=0.2, metavar='PCT',
                     help='Random erase prob (default: 0.)')
 parser.add_argument('--remode', type=str, default='const',
                     help='Random erase mode (default: "const")')
@@ -487,6 +489,7 @@ def main():
         hflip=args.hflip,
         vflip=args.vflip,
         color_jitter=args.color_jitter,
+        affine=args.affine,
         auto_augment=args.aa,
         num_aug_splits=num_aug_splits,
         interpolation=train_interpolation,
