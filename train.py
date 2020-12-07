@@ -161,7 +161,7 @@ parser.add_argument('--vflip', type=float, default=0.,
                     help='Vertical flip training aug probability')
 parser.add_argument('--color-jitter', type=float, default=[0.7,0.4,0.4], metavar='PCT',
                     help='Color jitter factor (default: 0.4)')
-parser.add_argument('--affine', default=30, metavar='PCT',
+parser.add_argument('--affine', default=20, metavar='PCT',
                     help='Random affine factor (default: None)')
 parser.add_argument('--aa', type=str, default=None, metavar='NAME',
                     help='Use AutoAugment policy. "v0" or "original". (default: None)'),

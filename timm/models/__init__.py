@@ -21,6 +21,7 @@ from .selecsls import *
 from .senet import *
 from .sknet import *
 from .shufflenet_v2 import *
+from .MobileNeXt import *
 from .tresnet import *
 from .vision_transformer import *
 from .vovnet import *

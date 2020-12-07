@@ -214,7 +214,7 @@ class ShuffleNetV2(nn.Module):
 
         self.num_of_channels = {0.5: [24, 48, 96, 192, 1024], 1: [24, 116, 232, 464, 1024],
                                 1.5: [24, 176, 352, 704, 1024], 2: [24, 244, 488, 976, 2048]}
-        self.c = [_make_divisible(chan, groups) for chan in self.num_of_channels[scale]]
+        self.c = [_make_divisible(chan, groups) for chan in self.num_of_channels[self.scale]]
         self.n = [3, 7, 3]  # TODO: should be [3,7,3]
         self.conv1 = nn.Conv2d(in_chans, self.c[0], kernel_size=3, bias=False, stride=2, padding=1)
         self.bn1 = nn.BatchNorm2d(self.c[0])
@@ -331,7 +331,7 @@ def shufflenetv2_100(pretrained=False, num_classes=1000, in_chans=3, **kwargs):
     `"ShuffleNet V2: Practical Guidelines for Efficient CNN Architecture Design" <https://arxiv.org/pdf/1807.11164.pdf>`
     """
     default_cfg = default_cfgs['shufflenetv2_100']
-    model = ShuffleNetV2(scale=1.0, in_chans=in_chans, num_classes=2, SE=False, residual=True, **kwargs)
+    model = ShuffleNetV2(scale=1.0, in_chans=in_chans, num_classes=num_classes, SE=False, residual=True, **kwargs)
     model.default_cfg = default_cfg
     if pretrained:
         load_pretrained(model, default_cfg, num_classes, in_chans, filter_fn=_filter_pretrained)
