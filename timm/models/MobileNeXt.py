@@ -193,21 +193,23 @@ class MobileNeXt(nn.Module):
         self.features = nn.Sequential(*layers)
         # building last several layers
         # 原为适配Grad_CAM,该层为独立出Final_layer
-        layer = FinalSandGlassLayer(960, 1280, 1, 6)
-        layers = [layer]
-        self.final_SandGlass_layers = nn.Sequential(*layers)
+        layer1 = FinalSandGlassLayer(960, 1280, 1, 6)
+        layers1 = [layer1]
+        self.final_SandGlass_layers = nn.Sequential(*layers1)
 
-        layer = FinalLayer(1280, 1)
-        layers = [layer]
-        self.final_layers = nn.Sequential(*layers)
+        layer2 = FinalLayer(1280, 1)
+        layers2 = [layer2]
+        self.final_layers = nn.Sequential(*layers2)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(output_channel, num_classes)
+        self.classifier = nn.Linear(1280, num_classes)
 
         self._initialize_weights()
 
     def forward(self, x):
         x = self.features(x)
+        x = self.final_SandGlass_layers(x)
+        x = self.final_layers(x)
         x = self.avgpool(x)
         # x = x.view(x.size(0), -1)  # 原MobileNeXt结构
         x = x.flatten(1)
