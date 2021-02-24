@@ -43,7 +43,7 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
     if weight_decay and filter_bias_and_bn:
         skip = {}
         if hasattr(model, 'no_weight_decay'):
-            skip = model.no_weight_decay
+            skip = model.no_weight_decay()
         parameters = add_weight_decay(model, weight_decay, skip)
         weight_decay = 0.
     else:
@@ -57,14 +57,16 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
         opt_args['eps'] = args.opt_eps
     if hasattr(args, 'opt_betas') and args.opt_betas is not None:
         opt_args['betas'] = args.opt_betas
+    if hasattr(args, 'opt_args') and args.opt_args is not None:
+        opt_args.update(args.opt_args)
 
     opt_split = opt_lower.split('_')
     opt_lower = opt_split[-1]
     if opt_lower == 'sgd' or opt_lower == 'nesterov':
-        del opt_args['eps']
+        opt_args.pop('eps', None)
         optimizer = optim.SGD(parameters, momentum=args.momentum, nesterov=True, **opt_args)
     elif opt_lower == 'momentum':
-        del opt_args['eps']
+        opt_args.pop('eps', None)
         optimizer = optim.SGD(parameters, momentum=args.momentum, nesterov=False, **opt_args)
     elif opt_lower == 'adam':
         optimizer = optim.Adam(parameters, **opt_args)
@@ -95,10 +97,10 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
     elif opt_lower == 'nvnovograd':
         optimizer = NvNovoGrad(parameters, **opt_args)
     elif opt_lower == 'fusedsgd':
-        del opt_args['eps']
+        opt_args.pop('eps', None)
         optimizer = FusedSGD(parameters, momentum=args.momentum, nesterov=True, **opt_args)
     elif opt_lower == 'fusedmomentum':
-        del opt_args['eps']
+        opt_args.pop('eps', None)
         optimizer = FusedSGD(parameters, momentum=args.momentum, nesterov=False, **opt_args)
     elif opt_lower == 'fusedadam':
         optimizer = FusedAdam(parameters, adam_w_mode=False, **opt_args)

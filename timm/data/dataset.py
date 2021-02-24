@@ -11,11 +11,18 @@ import torch.utils.data as data
 import os
 import re
 import numpy as np
+import cv2
 import torch
 import tarfile
-import cv2
+import logging
 from PIL import Image
 
+from .parsers import create_parser
+
+_logger = logging.getLogger(__name__)
+
+
+_ERROR_RETRY = 50
 
 IMG_EXTENSIONS = ['.png', '.jpg', '.jpeg']
 
@@ -119,6 +126,8 @@ class Dataset(data.Dataset):
             fn = lambda x: os.path.relpath(x, self.root)
         return [fn(x[0]) for x in self.samples]
 
+
+
 class Binocular_Dataset(data.Dataset):
 
     def __init__(
@@ -179,6 +188,8 @@ class Binocular_Dataset(data.Dataset):
                 return [os.path.basename(x[0]) for x in self.samples]
             else:
                 return [x[0] for x in self.samples]
+
+
 
 
 def _extract_tar_info(tarfile, class_to_idx=None, sort=True):
@@ -243,6 +254,96 @@ class DatasetTar(data.Dataset):
     def filenames(self, basename=False):
         fn = os.path.basename if basename else lambda x: x
         return [fn(x[0].name) for x in self.samples]
+
+
+
+class ImageDataset(data.Dataset):
+
+    def __init__(
+            self,
+            root,
+            parser=None,
+            class_map='',
+            load_bytes=False,
+            transform=None,
+    ):
+        if parser is None or isinstance(parser, str):
+            parser = create_parser(parser or '', root=root, class_map=class_map)
+        self.parser = parser
+        self.load_bytes = load_bytes
+        self.transform = transform
+        self._consecutive_errors = 0
+
+    def __getitem__(self, index):
+        img, target = self.parser[index]
+        try:
+            img = img.read() if self.load_bytes else Image.open(img).convert('RGB')
+        except Exception as e:
+            _logger.warning(f'Skipped sample (index {index}, file {self.parser.filename(index)}). {str(e)}')
+            self._consecutive_errors += 1
+            if self._consecutive_errors < _ERROR_RETRY:
+                return self.__getitem__((index + 1) % len(self.parser))
+            else:
+                raise e
+        self._consecutive_errors = 0
+        if self.transform is not None:
+            img = self.transform(img)
+        if target is None:
+            target = torch.tensor(-1, dtype=torch.long)
+        return img, target
+
+    def __len__(self):
+        return len(self.parser)
+
+    def filename(self, index, basename=False, absolute=False):
+        return self.parser.filename(index, basename, absolute)
+
+    def filenames(self, basename=False, absolute=False):
+        return self.parser.filenames(basename, absolute)
+
+
+class IterableImageDataset(data.IterableDataset):
+
+    def __init__(
+            self,
+            root,
+            parser=None,
+            split='train',
+            is_training=False,
+            batch_size=None,
+            class_map='',
+            load_bytes=False,
+            transform=None,
+    ):
+        assert parser is not None
+        if isinstance(parser, str):
+            self.parser = create_parser(
+                parser, root=root, split=split, is_training=is_training, batch_size=batch_size)
+        else:
+            self.parser = parser
+        self.transform = transform
+        self._consecutive_errors = 0
+
+    def __iter__(self):
+        for img, target in self.parser:
+            if self.transform is not None:
+                img = self.transform(img)
+            if target is None:
+                target = torch.tensor(-1, dtype=torch.long)
+            yield img, target
+
+    def __len__(self):
+        if hasattr(self.parser, '__len__'):
+            return len(self.parser)
+        else:
+            return 0
+
+    def filename(self, index, basename=False, absolute=False):
+        assert False, 'Filename lookup by index not supported, use filenames().'
+
+    def filenames(self, basename=False, absolute=False):
+        return self.parser.filenames(basename, absolute)
+
 
 
 class AugMixDataset(torch.utils.data.Dataset):
