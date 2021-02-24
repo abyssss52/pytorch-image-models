@@ -64,7 +64,7 @@ parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
 # Dataset / Model parameters
-parser.add_argument('--data', default='/home/night/abyss52/work/Dataset/face/face_mask', metavar='DIR',
+parser.add_argument('--data', default='/home/night/abyss52/work/Dataset/Face_mask/Face_mask', metavar='DIR',
                     help='path to dataset')   # './Datasets/cat_and_dog'   '/home/night/Datasets/demo'
 parser.add_argument('--model', default='mobilenetv2_100', type=str, metavar='MODEL',
                     help='Name of model to train (default: "countception"')
