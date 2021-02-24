@@ -113,6 +113,34 @@ def _decode_block_str(block_str):
         )
         if 'cc' in options:
             block_args['num_experts'] = int(options['cc'])
+    elif block_type == 'i2r':
+        block_args = dict(
+            block_type=block_type,
+            dw_kernel_size=_parse_ksize(options['k']),
+            exp_kernel_size=exp_kernel_size,
+            pw_kernel_size=pw_kernel_size,
+            out_chs=int(options['c']),
+            exp_ratio=float(options['e']),
+            se_ratio=float(options['se']) if 'se' in options else None,
+            stride=int(options['s']),
+            act_layer=act_layer,
+            noskip=noskip,
+        )
+    elif block_type == 'i2rghost':
+        block_args = dict(
+            block_type=block_type,
+            dw_kernel_size=_parse_ksize(options['k']),
+            exp_kernel_size=exp_kernel_size,
+            pw_kernel_size=pw_kernel_size,
+            out_chs=int(options['c']),
+            exp_ratio=float(options['e']),
+            se_ratio=float(options['se']) if 'se' in options else None,
+            stride=int(options['s']),
+            act_layer=act_layer,
+            noskip=noskip,
+        )
+        if 'cc' in options:
+            block_args['num_experts'] = int(options['cc'])
     elif block_type == 'ds' or block_type == 'dsa':
         block_args = dict(
             block_type=block_type,
@@ -270,6 +298,24 @@ class EfficientNetBuilder:
                 block = CondConvResidual(**ba)
             else:
                 block = InvertedResidual(**ba)
+        elif bt == 'i2r':
+            ba['drop_path_rate'] = drop_path_rate
+            ba['se_kwargs'] = self.se_kwargs
+            if self.verbose:
+                logging.info('  I2RBlock {}, Args: {}'.format(block_idx, str(ba)))
+            if ba.get('num_experts', 0) > 0:
+                block = CondConvResidual(**ba)
+            else:
+                block = I2RBlock(**ba)
+        elif bt == 'i2rghost':
+            ba['drop_path_rate'] = drop_path_rate
+            ba['se_kwargs'] = self.se_kwargs
+            if self.verbose:
+                logging.info('  I2RBlock {}, Args: {}'.format(block_idx, str(ba)))
+            if ba.get('num_experts', 0) > 0:
+                block = CondConvResidual(**ba)
+            else:
+                block = I2RGhostBlock(**ba)
         elif bt == 'ds' or bt == 'dsa':
             ba['drop_path_rate'] = drop_path_rate
             ba['se_kwargs'] = self.se_kwargs

@@ -21,8 +21,9 @@ parser.add_argument('--model_backbone',type=str, default='mobilenetv2_100',help=
 parser.add_argument('--classes_num', type=int, default=2, help='the number of classification class.')
 parser.add_argument('--input_channel', type=int, default=3, help='the number of input channel.')
 parser.add_argument('--input_size', type=int, default=224, help='the size of input.')
-parser.add_argument('--torch_model', default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-62.pth.tar') # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/ShuffleNetv2_100/checkpoint-38.pth.tar'  # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #   # './checkpoints/train/20200319-182337-mobilenetv2_100-224/checkpoint-14.pth.tar'
-parser.add_argument('--onnx_model', default="faceMask.onnx")    # "mobilenetv2.onnx"    # "FaceAnti-Spoofing.onnx"
+parser.add_argument('--torch_model', default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/MobileNeXt_100/checkpoint-84.pth.tar')  # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-34.pth.tar' # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/ShuffleNetv2_100/checkpoint-38.pth.tar'  # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #
+parser.add_argument('--onnx_model', default="faceMask_2.onnx")    # "mobilenetv2.onnx"    # "FaceAnti-Spoofing.onnx"
+parser.add_argument('--pt_model', default="mobilenext_100.pt")
 parser.add_argument('--onnx_model_sim', default="FaceMask-sim.onnx", help='Output ONNX simple model')     # "FaceAnti-Spoofing-sim.onnx"
 args = parser.parse_args()
 
@@ -53,6 +54,11 @@ x = torch.rand(1, args.input_channel, args.input_size, args.input_size)         
 # Export the model
 # torch_out = torch.onnx._export(mymodel, x, "mobilenetv2.onnx", export_params=True)
 torch_out = torch.onnx._export(mymodel, x, args.onnx_model, export_params=True)
+
+# Export the pt model
+trace_model = torch.jit.trace(mymodel, torch.Tensor(1, args.input_channel, args.input_size, args.input_size))
+trace_model.save(args.pt_model)
+
 
 # cv2.waitKey(10000)
 

@@ -91,6 +91,9 @@ class ModelOutputs():
             elif "global_pool" in name.lower():   # avgpool
                 x = module(x)
                 x = x.view(x.size(0), -1)
+            elif "avgpool" in name.lower():   # avgpool
+                x = module(x)
+                x = x.view(x.size(0), -1)
             else:
                 x = module(x)
 
@@ -176,7 +179,7 @@ class GradCam:
         cam = cv2.resize(cam, input.shape[2:])
         cam = cam - np.min(cam)
         cam = cam / np.max(cam)
-        return cam
+        return cam, result[index]
 
 
 class GuidedBackpropReLU(Function):
@@ -251,15 +254,15 @@ class GuidedBackpropReLUModel:
 
 def get_args():
     parser = argparse.ArgumentParser(description='pytorch CNN visualization by Grad-CAM')
-    parser.add_argument('--model_backbone', type=str, default='mobilenetv2_100', help='the type of model chosen.')   #  mnasnet_small semnasnet_100  # mobilenetv2_100  # shufflenetv2_100
+    parser.add_argument('--model_backbone', type=str, default='efficientnet_lite0', help='the type of model chosen.')   #  mnasnet_small semnasnet_100  # mobilenetv2_100  # shufflenetv2_100
     parser.add_argument('--classes_num', type=int, default=2, help='the number of classification class.')
     parser.add_argument('--input_channel', type=int, default=3, help='the number of input channel.')
     parser.add_argument('--input_size', type=int, default=224, help='the size of input.')
     parser.add_argument('--torch_model',
-                        default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-62.pth.tar')    # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/ShuffleNetv2_100/checkpoint-57.pth.tar'  # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-63_new.pth.tar' # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar" #   # './checkpoints/train/20200319-182337-mobilenetv2_100-224/checkpoint-14.pth.tar'
+                        default='/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/EfficientNet-lite0/checkpoint-88.pth.tar')    #  '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/mobilenetv2_100_no_prefetcher/checkpoint-34.pth.tar' # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/ShuffleNetv2_100/checkpoint-59.pth.tar' # '/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/face_mask/MobileNeXt_100/checkpoint-84.pth.tar'  # "/home/night/PycharmProjects/Picture_Classification/pytorch-image-models/checkpoints/Live_Detection/model_best.pth.tar"
     parser.add_argument('--use-cuda', default=True, help='Use NVIDIA GPU acceleration')
-    parser.add_argument('--image-path', type=str, default='/home/night/abyss52/work/Test_data/face_mask/test/1',
-                        help='Input image path')    # '/home/night/Datasets/face/face_mask/val/face'    # '/home/night/abyss52/work/Test_data/face_mask/beard'
+    parser.add_argument('--image-path', type=str, default='/home/night/abyss52/work/Test_data/face_mask/beard',
+                        help='Input image path')    # '/home/night/Datasets/face/face_mask/val/face'    #  '/home/night/abyss52/work/Test_data/face_mask/test/1'  # '/home/night/abyss52/work/Test_data/face_mask/tmp'
     args = parser.parse_args()
     args.use_cuda = args.use_cuda and torch.cuda.is_available()
     if args.use_cuda:
@@ -313,20 +316,27 @@ if __name__ == '__main__':
 
     grad_cam = GradCam(model=mymodel, feature_module=mymodel.final_layers, target_layer_names=["0"], use_cuda=args.use_cuda)
 
+    wrong_count = 0
+
     # 循环显示图片
-    for img in os.listdir(args.image_path):
-        img_path = os.path.join(args.image_path, img)
+    for img_name in os.listdir(args.image_path):
+        img_path = os.path.join(args.image_path, img_name)
         print(img_path)
-        img = cv2.imread(img_path)
-        img = np.float32(cv2.resize(img, (224, 224))) / 255
+        img_ori = cv2.imread(img_path)
+        img = np.float32(cv2.resize(img_ori, (224, 224))) / 255
         input = preprocess_image(img)
 
         # If None, returns the map for the highest scoring category.
         # Otherwise, targets the requested index.
         target_index = None
-        mask = grad_cam(input, target_index)
+        mask, cls = grad_cam(input, target_index)
 
-        show_cam_on_image(img, mask)
+        # show_cam_on_image(img, mask)
+
+        if cls == 'mask':
+            wrong_count += 1
+
+        # cv2.imwrite(os.path.join('/home/night/abyss52/work/Dataset/face/Celeba/img_Celeba/', cls, img_name), img_ori)
 
         # gb_model = GuidedBackpropReLUModel(model=mymodel, use_cuda=args.use_cuda)
         # # print(mymodel._modules.items())
@@ -338,3 +348,6 @@ if __name__ == '__main__':
         #
         # cv2.imwrite('gb.jpg', gb)
         # cv2.imwrite('cam_gb.jpg', cam_gb)
+
+
+    print('错误结果数：', wrong_count)

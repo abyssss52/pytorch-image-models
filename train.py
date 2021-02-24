@@ -195,7 +195,7 @@ parser.add_argument('--smoothing', type=float, default=0.1,
                     help='Label smoothing (default: 0.1)')
 parser.add_argument('--train-interpolation', type=str, default='random',
                     help='Training interpolation (random, bilinear, bicubic default: "random")')
-parser.add_argument('--drop', type=float, default=0.3, metavar='PCT',
+parser.add_argument('--drop', type=float, default=0.2, metavar='PCT',
                     help='Dropout rate (default: 0.)')
 parser.add_argument('--drop-connect', type=float, default=None, metavar='PCT',
                     help='Drop connect rate, DEPRECATED, use drop-path (default: None)')

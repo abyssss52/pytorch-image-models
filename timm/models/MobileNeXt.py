@@ -202,7 +202,8 @@ class MobileNeXt(nn.Module):
         self.final_layers = nn.Sequential(*layers2)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(1280, num_classes)
+        output_channel = 1280
+        self.classifier = nn.Linear(output_channel, num_classes)
 
         self._initialize_weights()
 

@@ -2,7 +2,7 @@
 
 Hacked together by / Copyright 2020 Ross Wightman
 """
-
+import math
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -319,6 +319,390 @@ class InvertedResidual(nn.Module):
             x += residual
 
         return x
+
+
+class I2RGhostBlock(nn.Module):
+    """
+    Mobile Inverted Residual Bottleneck Block
+
+    Args:
+        block_args (namedtuple): BlockArgs, see above
+        global_params (namedtuple): GlobalParam, see above
+
+    Attributes:
+        has_se (bool): Whether the block contains a Squeeze and Excitation layer.
+    """
+
+    def __init__(self, in_chs, out_chs, dw_kernel_size=3,
+                 stride=1, dilation=1, pad_type='', act_layer=nn.ReLU, noskip=False,
+                 exp_ratio=1.0, exp_kernel_size=1, pw_kernel_size=1,
+                 se_ratio=0., se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None,
+                 conv_kwargs=None, drop_path_rate=0., keep_3x3=False, group_1x1=1):
+        super().__init__()
+        norm_kwargs = norm_kwargs or {}
+        conv_kwargs = conv_kwargs or {}
+        mid_chs = make_divisible(in_chs * exp_ratio)
+        self.has_se = se_ratio is not None and se_ratio > 0.
+        self.has_residual = (in_chs == out_chs and stride == 1) and not noskip
+        self.drop_path_rate = drop_path_rate
+        self.expand_ratio = exp_ratio
+
+        # Get static or dynamic convolution depending on image size
+        # Conv2d = get_same_padding_conv2d(image_size=global_params.image_size)
+        Conv2d = nn.Conv2d
+
+        # Expansion phase
+        inp = in_chs
+        oup = in_chs // self.expand_ratio  # number of output channels
+        final_oup = out_chs
+        self.inp, self.final_oup = inp, final_oup
+        self.identity = False
+
+        if oup < oup / 6.:
+            oup = math.ceil(oup / 6.)
+            oup = make_divisible(oup, 16)
+        oup = make_divisible(oup, 2)
+        k = dw_kernel_size
+        s = stride
+
+        # apply repeat scheme
+        self.split_ratio = 2
+        self.ghost_idx_inp = inp // self.split_ratio
+        self.ghost_idx_oup = int(final_oup - self.ghost_idx_inp)
+
+        self.inp, self.final_oup, self.s = inp, final_oup, s
+        # if self._block_args.expand_ratio != 1:
+        #     self._expand_conv = Conv2d(in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
+        #     self._bn0 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+        if self.expand_ratio == 2:
+            # self.features = nn.Sequential(
+            self.dwise_conv1 = Conv2d(in_channels=in_chs, out_channels=in_chs, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=in_chs)
+            self.bn1 = norm_layer(in_chs, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+            # first linear layer
+            self.project_layer = Conv2d(in_channels=self.ghost_idx_inp, out_channels=oup, kernel_size=1, bias=False)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+            # sec linear layer
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=self.ghost_idx_oup, kernel_size=1, bias=False)
+            self.bn3 = norm_layer(self.ghost_idx_oup, **norm_kwargs)
+            # act_layer(inplace=True),
+            # expand layer
+            self.dwise_conv2 = Conv2d(in_channels=final_oup, out_channels=final_oup, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=final_oup, stride=s)
+            self.bn4 = norm_layer(final_oup, **norm_kwargs)
+            # )
+        elif inp != final_oup and s == 1:
+            # self.features=nn.Sequential(
+            self.project_layer = Conv2d(in_channels=in_chs, out_channels=oup, kernel_size=1, bias=False)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+            # only two linear layers are needed
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False,
+                                       groups=group_1x1)
+            self.bn3 = norm_layer(final_oup, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+            # )
+        elif in_chs != final_oup and s == 2:
+            # self.features = nn.Sequential(
+            self.project_layer = Conv2d(in_channels=in_chs, out_channels=oup, kernel_size=1, bias=False)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+            self.bn3 = norm_layer(final_oup, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+
+            self.dwise_conv2 = Conv2d(in_channels=final_oup, out_channels=final_oup, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=final_oup, stride=s)
+            self.bn4 = norm_layer(final_oup, **norm_kwargs)
+            # )
+        else:
+            self.identity = True
+            # self.features =  nn.Sequential(
+            self.dwise_conv1 = Conv2d(in_channels=in_chs, out_channels=in_chs, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=in_chs)
+            self.bn1 = norm_layer(in_chs, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+
+            self.project_layer = Conv2d(in_channels=self.ghost_idx_inp, out_channels=oup, kernel_size=1, bias=False,
+                                        groups=group_1x1)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=self.ghost_idx_oup, kernel_size=1, bias=False,
+                                       groups=group_1x1)
+            self.bn3 = norm_layer(self.ghost_idx_oup, **norm_kwargs)
+            # act_layer(inplace=True),
+
+            self.dwise_conv2 = Conv2d(in_channels=final_oup, out_channels=final_oup, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=final_oup)
+            self.bn4 = norm_layer(final_oup, **norm_kwargs)
+            # )
+        if self.has_se:
+            se_mode = 'large'
+            if se_mode == 'large':
+                se_frac = 0.5
+                se_kwargs = resolve_se_args(se_kwargs, in_chs, act_layer)
+                self.se = SqueezeExcite(out_chs, se_ratio=se_ratio * se_frac, **se_kwargs)
+            else:
+                se_frac = 1
+                se_kwargs = resolve_se_args(se_kwargs, out_chs, act_layer)
+                self.se = SqueezeExcite(out_chs, se_ratio=se_ratio * se_frac / exp_ratio, **se_kwargs)
+
+    def forward(self, inputs, drop_path_rate=None):
+        """
+        :param inputs: input tensor
+        :param drop_path_rate: drop path rate (float, between 0 and 1)
+        :return: output of block
+        """
+
+        # Expansion and Depthwise Convolution
+        # import pdb;pdb.set_trace()
+        # x = self.features(inputs)
+        if self.expand_ratio == 2:
+            # first dwise conv
+            x = self.act(self.bn1(self.dwise_conv1(inputs)))
+            # first 1x1 conv
+            ghost_id = x[:, self.ghost_idx_inp:, :, :]
+            x = self.bn2(self.project_layer(x[:, :self.ghost_idx_inp, :, :]))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+            # generate more features
+            x = torch.cat([x, ghost_id], dim=1)
+            # second dwise conv
+            x = self.bn4(self.dwise_conv2(x))
+        elif self.inp != self.final_oup and self.s == 1:
+            # first 1x1 conv
+            x = self.bn2(self.project_layer(inputs))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+        elif self.inp != self.final_oup and self.s == 2:
+            # first 1x1 conv
+            x = self.bn2(self.project_layer(inputs))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+            # second dwise conv
+            x = self.bn4(self.dwise_conv2(x))
+        else:
+            # first dwise conv
+            x = self.act(self.bn1(self.dwise_conv1(inputs)))
+            # first 1x1 conv
+            ghost_id = x[:, self.ghost_idx_inp:, :, :]
+            x = self.bn2(self.project_layer(x[:, :self.ghost_idx_inp, :, :]))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+            # second dwise conv
+            x = torch.cat([x, ghost_id], dim=1)
+            x = self.bn4(self.dwise_conv2(x))
+        # Squeeze-and-excitation
+        if self.has_se:
+            x = self.se(x)
+
+        # Skip connection and drop connect
+        # input_filters, output_filters = self.in_chs, self.out_chs
+        # if self.identity and self._block_args.stride == 1 and input_filters == output_filters:
+        #     # import pdb;pdb.set_trace()
+        #     if drop_connect_rate:
+        #         x = drop_connect(x, p=drop_connect_rate, training=self.training)
+        #     x = x + inputs  # skip connection
+        # return x
+        if self.identity:
+            if self.drop_path_rate > 0.:
+                x = drop_path(x, self.drop_path_rate, self.training)
+            x = x + inputs
+            return x
+        else:
+            return x
+
+
+class I2RBlock(nn.Module):
+    """
+    Mobile Inverted Residual Bottleneck Block
+
+    Args:
+        block_args (namedtuple): BlockArgs, see above
+        global_params (namedtuple): GlobalParam, see above
+
+    Attributes:
+        has_se (bool): Whether the block contains a Squeeze and Excitation layer.
+    """
+
+    def __init__(self, in_chs, out_chs, dw_kernel_size=3,
+                 stride=1, dilation=1, pad_type='', act_layer=nn.ReLU, noskip=False,
+                 exp_ratio=1.0, exp_kernel_size=1, pw_kernel_size=1,
+                 se_ratio=0., se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None,
+                 conv_kwargs=None, drop_path_rate=0., keep_3x3=False, group_1x1=2):
+        super().__init__()
+        norm_kwargs = norm_kwargs or {}
+        conv_kwargs = conv_kwargs or {}
+        mid_chs = make_divisible(in_chs * exp_ratio)
+        self.has_se = se_ratio is not None and se_ratio > 0.
+        self.has_residual = (in_chs == out_chs and stride == 1) and not noskip
+        self.drop_path_rate = drop_path_rate
+        self.expand_ratio = exp_ratio
+
+        # Get static or dynamic convolution depending on image size
+        # Conv2d = get_same_padding_conv2d(image_size=global_params.image_size)
+        Conv2d = nn.Conv2d
+
+        # Expansion phase
+        inp = in_chs
+        oup = in_chs // self.expand_ratio  # number of output channels
+        final_oup = out_chs
+        self.inp, self.final_oup = inp, final_oup
+        self.identity = False
+
+        if oup < oup / 6.:
+            oup = math.ceil(oup / 6.)
+            oup = make_divisible(oup, 16)
+        oup = make_divisible(oup, 2)
+        k = dw_kernel_size
+        s = stride
+
+        # apply repeat scheme
+        self.ghost_idx_inp = inp
+        self.ghost_idx_oup = final_oup
+
+        self.inp, self.final_oup, self.s = inp, final_oup, s
+        # if self._block_args.expand_ratio != 1:
+        #     self._expand_conv = Conv2d(in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
+        #     self._bn0 = nn.BatchNorm2d(num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+        if self.expand_ratio == 2:
+            # self.features = nn.Sequential(
+            self.dwise_conv1 = Conv2d(in_channels=in_chs, out_channels=in_chs, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=in_chs)
+            self.bn1 = norm_layer(in_chs, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+            # first linear layer
+            self.project_layer = Conv2d(in_channels=self.ghost_idx_inp, out_channels=oup, kernel_size=1, bias=False,
+                                        groups=group_1x1)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+            # sec linear layer
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=self.ghost_idx_oup, kernel_size=1, bias=False,
+                                       groups=group_1x1)
+            self.bn3 = norm_layer(self.ghost_idx_oup, **norm_kwargs)
+            # act_layer(inplace=True),
+            # expand layer
+            self.dwise_conv2 = Conv2d(in_channels=final_oup, out_channels=final_oup, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=final_oup, stride=s)
+            self.bn4 = norm_layer(final_oup, **norm_kwargs)
+            # )
+        elif inp != final_oup and s == 1:
+            # self.features=nn.Sequential(
+            self.project_layer = Conv2d(in_channels=in_chs, out_channels=oup, kernel_size=1, bias=False)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+            # only two linear layers are needed
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+            self.bn3 = norm_layer(final_oup, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+            # )
+        elif in_chs != final_oup and s == 2:
+            # self.features = nn.Sequential(
+            self.project_layer = Conv2d(in_channels=in_chs, out_channels=oup, kernel_size=1, bias=False)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+            self.bn3 = norm_layer(final_oup, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+
+            self.dwise_conv2 = Conv2d(in_channels=final_oup, out_channels=final_oup, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=final_oup, stride=s)
+            self.bn4 = norm_layer(final_oup, **norm_kwargs)
+            # )
+        else:
+            self.identity = True
+            # self.features =  nn.Sequential(
+            self.dwise_conv1 = Conv2d(in_channels=in_chs, out_channels=in_chs, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=in_chs)
+            self.bn1 = norm_layer(in_chs, **norm_kwargs)
+            self.act = act_layer(inplace=True)
+
+            self.project_layer = Conv2d(in_channels=self.ghost_idx_inp, out_channels=oup, kernel_size=1, bias=False,
+                                        groups=group_1x1)
+            self.bn2 = norm_layer(oup, **norm_kwargs)
+
+            self.expand_layer = Conv2d(in_channels=oup, out_channels=self.ghost_idx_oup, kernel_size=1, bias=False,
+                                       groups=group_1x1)
+            self.bn3 = norm_layer(self.ghost_idx_oup, **norm_kwargs)
+            # act_layer(inplace=True),
+
+            self.dwise_conv2 = Conv2d(in_channels=final_oup, out_channels=final_oup, kernel_size=k, padding=k // 2,
+                                      bias=False, groups=final_oup)
+            self.bn4 = norm_layer(final_oup, **norm_kwargs)
+            # )
+        if self.has_se:
+            se_mode = 'small'
+            if se_mode == 'large':
+                se_frac = 0.5
+                se_kwargs = resolve_se_args(se_kwargs, in_chs, act_layer)
+                self.se = SqueezeExcite(out_chs, se_ratio=se_ratio * se_frac, **se_kwargs)
+            else:
+                se_frac = 1
+                se_kwargs = resolve_se_args(se_kwargs, out_chs, act_layer)
+                self.se = SqueezeExcite(out_chs, se_ratio=se_ratio * se_frac / exp_ratio, **se_kwargs)
+
+    def forward(self, inputs, drop_path_rate=None):
+        """
+        :param inputs: input tensor
+        :param drop_path_rate: drop path rate (float, between 0 and 1)
+        :return: output of block
+        """
+
+        # Expansion and Depthwise Convolution
+        # import pdb;pdb.set_trace()
+        # x = self.features(inputs)
+        if self.expand_ratio == 2:
+            # first dwise conv
+            x = self.act(self.bn1(self.dwise_conv1(inputs)))
+            # first 1x1 conv
+            ghost_id = x[:, self.ghost_idx_inp:, :, :]
+            x = self.bn2(self.project_layer(x[:, :self.ghost_idx_inp, :, :]))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+            # generate more features
+            x = torch.cat([x, ghost_id], dim=1)
+            # second dwise conv
+            x = self.bn4(self.dwise_conv2(x))
+        elif self.inp != self.final_oup and self.s == 1:
+            # first 1x1 conv
+            x = self.bn2(self.project_layer(inputs))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+        elif self.inp != self.final_oup and self.s == 2:
+            # first 1x1 conv
+            x = self.bn2(self.project_layer(inputs))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+            # second dwise conv
+            x = self.bn4(self.dwise_conv2(x))
+        else:
+            # first dwise conv
+            x = self.act(self.bn1(self.dwise_conv1(inputs)))
+            # first 1x1 conv
+            ghost_id = x[:, self.ghost_idx_inp:, :, :]
+            x = self.bn2(self.project_layer(x[:, :self.ghost_idx_inp, :, :]))
+            # second 1x1 conv
+            x = self.act(self.bn3(self.expand_layer(x)))
+            # second dwise conv
+            x = torch.cat([x, ghost_id], dim=1)
+            x = self.bn4(self.dwise_conv2(x))
+        # Squeeze-and-excitation
+        if self.has_se:
+            x = self.se(x)
+
+        # Skip connection and drop connect
+        # input_filters, output_filters = self.in_chs, self.out_chs
+        # if self.identity and self._block_args.stride == 1 and input_filters == output_filters:
+        #     # import pdb;pdb.set_trace()
+        #     if drop_connect_rate:
+        #         x = drop_connect(x, p=drop_connect_rate, training=self.training)
+        #     x = x + inputs  # skip connection
+        # return x
+        if self.identity:
+            if self.drop_path_rate > 0.:
+                x = drop_path(x, self.drop_path_rate, self.training)
+            x = x + inputs
+            return x
+        else:
+            return x
 
 
 class CondConvResidual(InvertedResidual):
