@@ -1,6 +1,42 @@
-# PyTorch Image Models, etc
+# PyTorch Image Models
+- [Sponsors](#sponsors)
+- [What's New](#whats-new)
+- [Introduction](#introduction)
+- [Models](#models)
+- [Features](#features)
+- [Results](#results)
+- [Getting Started (Documentation)](#getting-started-documentation)
+- [Train, Validation, Inference Scripts](#train-validation-inference-scripts)
+- [Awesome PyTorch Resources](#awesome-pytorch-resources)
+- [Licenses](#licenses)
+- [Citing](#citing)
+
+## Sponsors
+
+A big thank you to my [GitHub Sponsors](https://github.com/sponsors/rwightman) for their support!
+
+In addition to the sponsors at the link above, I've received hardware and/or cloud resources from
+* Nvidia (https://www.nvidia.com/en-us/)
+* TFRC (https://www.tensorflow.org/tfrc)
+
+I'm fortunate to be able to dedicate significant time and money of my own supporting this and other open source projects. However, as the projects increase in scope, outside support is needed to continue with the current trajectory of hardware, infrastructure, and electricty costs.
 
 ## What's New
+
+### March 17, 2021
+* Add new ECA-NFNet-L0 (rename `nfnet_l0c`->`eca_nfnet_l0`) weights trained by myself.
+  * 82.6 top-1 @ 288x288, 82.8 @ 320x320, trained at 224x224
+  * Uses SiLU activation, approx 2x faster than `dm_nfnet_f0` and 50% faster than `nfnet_f0s` w/ 1/3 param count
+* Integrate [Hugging Face model hub](https://huggingface.co/models) into timm create_model and default_cfg handling for pretrained weight and config sharing (more on this soon!)
+* Merge HardCoRe NAS models contributed by https://github.com/yoniaflalo
+* Merge PyTorch trained EfficientNet-EL and pruned ES/EL variants contributed by [DeGirum](https://github.com/DeGirum)
+
+
+### March 7, 2021
+* First 0.4.x PyPi release w/ NFNets (& related), ByoB (GPU-Efficient, RepVGG, etc).
+* Change feature extraction for pre-activation nets (NFNets, ResNetV2) to return features before activation.
+* Tested with PyTorch 1.8 release. Updated CI to use 1.8.
+* Benchmarked several arch on RTX 3090, Titan RTX, and V100 across 1.7.1, 1.8, NGC 20.12, and 21.02. Some interesting performance variations to take note of https://gist.github.com/rwightman/bb59f9e245162cee0e38bd66bd8cd77f
 
 ### Feb 18, 2021
 * Add pretrained weights and model variants for NFNet-F* models from [DeepMind Haiku impl](https://github.com/deepmind/deepmind-research/tree/master/nfnets).
@@ -114,45 +150,6 @@
 * Support for native Torch AMP and channels_last memory format added to train/validate scripts (`--channels-last`, `--native-amp` vs `--apex-amp`)
 * Models tested with channels_last on latest NGC 20.08 container. AdaptiveAvgPool in attn layers changed to mean((2,3)) to work around bug with NHWC kernel.
 
-### Aug 12, 2020
-* New/updated weights from training experiments
-  * EfficientNet-B3 - 82.1 top-1 (vs 81.6 for official with AA and 81.9 for AdvProp)
-  * RegNetY-3.2GF - 82.0 top-1 (78.9 from official ver)
-  * CSPResNet50 - 79.6 top-1 (76.6 from official ver)
-* Add CutMix integrated w/ Mixup. See [pull request](https://github.com/rwightman/pytorch-image-models/pull/218) for some usage examples
-* Some fixes for using pretrained weights with `in_chans` != 3 on several models.
-
-### Aug 5, 2020
-Universal feature extraction, new models, new weights, new test sets.
-* All models support the `features_only=True` argument for `create_model` call to return a network that extracts feature maps from the deepest layer at each stride.
-* New models
-  * CSPResNet, CSPResNeXt, CSPDarkNet, DarkNet
-  * ReXNet
-  * (Modified Aligned) Xception41/65/71 (a proper port of TF models)
-* New trained weights
-  * SEResNet50 - 80.3 top-1
-  * CSPDarkNet53 - 80.1 top-1
-  * CSPResNeXt50 - 80.0 top-1
-  * DPN68b - 79.2 top-1
-  * EfficientNet-Lite0 (non-TF ver) - 75.5 (submitted by [@hal-314](https://github.com/hal-314))
-* Add 'real' labels for ImageNet and ImageNet-Renditions test set, see [`results/README.md`](results/README.md)
-* Test set ranking/top-n diff script by [@KushajveerSingh](https://github.com/KushajveerSingh)
-* Train script and loader/transform tweaks to punch through more aug arguments
-* README and documentation overhaul. See initial (WIP) documentation at https://rwightman.github.io/pytorch-image-models/
-* adamp and sgdp optimizers added by [@hellbell](https://github.com/hellbell)
-
-### June 11, 2020
-Bunch of changes:
-* DenseNet models updated with memory efficient addition from torchvision (fixed a bug), blur pooling and deep stem additions
-* VoVNet V1 and V2 models added, 39 V2 variant (ese_vovnet_39b) trained to 79.3 top-1
-* Activation factory added along with new activations:
-   * select act at model creation time for more flexibility in using activations compatible with scripting or tracing (ONNX export)
-   * hard_mish (experimental) added with memory-efficient grad, along with ME hard_swish
-   * context mgr for setting exportable/scriptable/no_jit states
-* Norm + Activation combo layers added with initial trial support in DenseNet and VoVNet along with impl of EvoNorm and InplaceAbn wrapper that fit the interface
-* Torchscript works for all but two of the model types as long as using Pytorch 1.5+, tests added for this
-* Some import cleanup and classifier reset changes, all models will have classifier reset to nn.Identity on reset_classifer(0) call
-* Prep for 0.1.28 pip release
 
 ## Introduction
 
@@ -183,6 +180,7 @@ A full version of the list below with source links can be found in the [document
     * MobileNet-V2 - https://arxiv.org/abs/1801.04381
     * Single-Path NAS - https://arxiv.org/abs/1904.02877
 * GPU-Efficient Networks - https://arxiv.org/abs/2006.14090
+* HardCoRe-NAS - https://arxiv.org/abs/2102.11646
 * HRNet - https://arxiv.org/abs/1908.07919
 * Inception-V3 - https://arxiv.org/abs/1512.00567
 * Inception-ResNet-V2 and Inception-V4 - https://arxiv.org/abs/1602.07261
@@ -265,9 +263,13 @@ Several (less common) features that I often utilize in my projects are included.
 
 Model validation results can be found in the [documentation](https://rwightman.github.io/pytorch-image-models/results/) and in the [results tables](results/README.md)
 
-## Getting Started
+## Getting Started (Documentation)
 
-See the [documentation](https://rwightman.github.io/pytorch-image-models/)
+My current [documentation](https://rwightman.github.io/pytorch-image-models/) for `timm` covers the basics.
+
+[timmdocs](https://fastai.github.io/timmdocs/) is quickly becoming a much more comprehensive set of documentation for `timm`. A big thanks to [Aman Arora](https://github.com/amaarora) for his efforts creating timmdocs.
+
+[paperswithcode](https://paperswithcode.com/lib/timm) is a good resource for browsing the models within `timm`.
 
 ## Train, Validation, Inference Scripts
 

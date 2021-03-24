@@ -29,7 +29,8 @@ import torchvision.utils
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
 from timm.data import Dataset, Binocular_Dataset, create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
-from timm.models import create_model, resume_checkpoint, load_checkpoint, model_parameters, convert_splitbn_model
+from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint,\
+    convert_splitbn_model, model_parameters
 from timm.utils import *
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCrossEntropy
 from timm.optim import create_optimizer
@@ -64,7 +65,7 @@ parser.add_argument('-c', '--config', default='', type=str, metavar='FILE',
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 
 # Dataset / Model parameters
-parser.add_argument('--data', default='/home/night/abyss52/work/Dataset/Face_mask/Face_mask', metavar='DIR',
+parser.add_argument('data_dir', default='/home/night/abyss52/work/Dataset/Face_mask/Face_mask', metavar='DIR',
                     help='path to dataset')   # './Datasets/cat_and_dog'   '/home/night/Datasets/demo'
 parser.add_argument('--dataset', '-d', metavar='NAME', default='',
                     help='dataset type (default: ImageFolder/ImageTar if empty)')
@@ -83,11 +84,13 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH',
 parser.add_argument('--no-resume-opt', action='store_true', default=False,
                     help='prevent resume of optimizer state when resuming model')
 parser.add_argument('--num-classes', type=int, default=2, metavar='N',
-                    help='number of label classes (default: 1000)')
+                    help='number of label classes (Model default if None)')
 parser.add_argument('--gp', default='avg', type=str, metavar='POOL',
                     help='Global pool type, one of (fast, avg, max, avgmax, avgmaxc). Model default if None.')
 parser.add_argument('--cls-assignment', type=str, default='normal',
                     help='the type of classification assignment used for choosing input channel and choosing dataloader mode(option:"normal","bincamera")')
+parser.add_argument('--img-size', type=int, default=None, metavar='N',
+                    help='Image patch size (default: None => model default)')
 parser.add_argument('--input-size', default=None, nargs=3, type=int,
                     metavar='N N N', help='Input all image dimensions (d h w, e.g. --input-size 3 224 224), uses model default if empty')
 parser.add_argument('--input-channel', type=int, default=3, help='Image channel size')
@@ -106,7 +109,7 @@ parser.add_argument('-vb', '--validation-batch-size-multiplier', type=int, defau
 
 # Optimizer parameters
 parser.add_argument('--opt', default='rmsprop', type=str, metavar='OPTIMIZER',
-                    help='Optimizer (default: "rmsprop"')
+                    help='Optimizer (default: "sgd"')
 parser.add_argument('--opt-eps', default=1e-8, type=float, metavar='EPSILON',
                     help='Optimizer Epsilon (default: 1e-8, use opt default)')
 parser.add_argument('--opt-betas', default=None, type=float, nargs='+', metavar='BETA',
@@ -364,9 +367,10 @@ def main():
         args.num_classes = model.num_classes  # FIXME handle model default vs config num_classes more elegantly
 
     if args.local_rank == 0:
-        _logger.info('Model %s created, param count: %d' %
-                     (args.model, sum([m.numel() for m in model.parameters()])))
-
+        _logger.info(
+            f'Model {safe_model_name(args.model)} created, param count:{sum([m.numel() for m in model.parameters()])}')
+        # _logger.info('Model %s created, param count: %d' %
+        #              (args.model, sum([m.numel() for m in model.parameters()])))
     data_config = resolve_data_config(vars(args), model=model, verbose=args.local_rank == 0)
 
     # setup augmentation batch splits for contrastive loss or split bn
@@ -483,6 +487,7 @@ def main():
         #                 'zero initialized BN layers (enabled by default for ResNets) while sync-bn enabled.')
         #     except Exception as e:
         #         _logger.error('Failed to enable Synchronized BatchNorm. Install Apex or Torch >= 1.1')
+
         if has_apex and use_amp != 'native':
             # Apex DDP preferred unless native amp is activated
             if args.local_rank == 0:
@@ -522,7 +527,6 @@ def main():
         args.dataset, root=args.data_dir, split=args.train_split, is_training=True, batch_size=args.batch_size)
     dataset_eval = create_dataset(
         args.dataset, root=args.data_dir, split=args.val_split, is_training=False, batch_size=args.batch_size)
-
 
     # setup mixup / cutmix
     collate_fn = None
@@ -625,7 +629,7 @@ def main():
         output_base = args.output if args.output else './output'
         exp_name = '-'.join([
             datetime.now().strftime("%Y%m%d-%H%M%S"),
-            args.model,
+            safe_model_name(args.model),
             str(data_config['input_size'][-1])
         ])
         output_dir = get_outdir(output_base, 'train', exp_name)
