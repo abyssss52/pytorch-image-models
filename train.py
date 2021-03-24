@@ -29,7 +29,7 @@ import torchvision.utils
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
 
 from timm.data import Dataset, Binocular_Dataset, create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
-from timm.models import create_model, resume_checkpoint, load_checkpoint, convert_splitbn_model
+from timm.models import create_model, resume_checkpoint, load_checkpoint, model_parameters, convert_splitbn_model
 from timm.utils import *
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy, JsdCrossEntropy
 from timm.optim import create_optimizer

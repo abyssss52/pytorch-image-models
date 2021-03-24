@@ -18,7 +18,6 @@ import logging
 from PIL import Image
 
 from .parsers import create_parser
-
 _logger = logging.getLogger(__name__)
 
 

@@ -17,17 +17,24 @@ from .constants import IMG_EXTENSIONS
 def find_images_and_targets(folder, types=IMG_EXTENSIONS, class_to_idx=None, leaf_name_only=True, sort=True):
     labels = []
     filenames = []
+    num = 0
     for root, subdirs, files in os.walk(folder, topdown=False, followlinks=True):
+        num += 1
+        # print('进来的次数：%d'%num)
         rel_path = os.path.relpath(root, folder) if (root != folder) else ''
         label = os.path.basename(rel_path) if leaf_name_only else rel_path.replace(os.path.sep, '_')
+        # print(label)
         for f in files:
             base, ext = os.path.splitext(f)
             if ext.lower() in types:
                 filenames.append(os.path.join(root, f))
                 labels.append(label)
+        # if num == 2:
+        #     print(labels)
     if class_to_idx is None:
         # building class index
         unique_labels = set(labels)
+        # print(unique_labels)
         sorted_labels = list(sorted(unique_labels, key=natural_key))
         class_to_idx = {c: idx for idx, c in enumerate(sorted_labels)}
     images_and_targets = [(f, class_to_idx[l]) for f, l in zip(filenames, labels) if l in class_to_idx]
