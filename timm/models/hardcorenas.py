@@ -1,8 +1,8 @@
 import torch.nn as nn
-from .efficientnet_builder import decode_arch_def, resolve_bn_args
+from .efficientnet_builder import decode_arch_def
 from .mobilenetv3 import MobileNetV3, MobileNetV3Features, build_model_with_cfg, default_cfg_for_features
 from .layers import hard_sigmoid
-from .efficientnet_blocks import resolve_act_layer
+from .efficientnet_blocks import resolve_act_layer, resolve_bn_args
 from .registry import register_model
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
