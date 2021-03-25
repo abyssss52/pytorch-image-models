@@ -42,6 +42,11 @@ def _gen_tinynet(variant_cfg, channel_multiplier=1.0, depth_multiplier=1.0, dept
     model.default_cfg = variant_cfg
     return model
 
+TINYNET_CFG = {"a": (0.86, 1.0, 1.2),
+               "b": (0.84, 0.75, 1.1),
+               "c": (0.825, 0.54, 0.85),
+               "d": (0.68, 0.54, 0.695),
+               "e": (0.475, 0.51, 0.60)}
 
 def _cfg(url='', **kwargs):
     return {
@@ -52,35 +57,106 @@ def _cfg(url='', **kwargs):
         **kwargs
     }
 
-
 default_cfgs = {
-    'tinynet_050': _cfg(url=''),
-    'tinynet_075': _cfg(url=''),
-    'tinynet_100': _cfg(url=''),
-
+    'tinynet_a': _cfg(url=''),
+    'tinynet_b': _cfg(url=''),
+    'tinynet_c': _cfg(url=''),
+    'tinynet_d': _cfg(url=''),
+    'tinynet_e': _cfg(url=''),
 }
 
 
 @register_model
-def tinynet_050(pretrained=False, **kwargs):
+def tinynet_a(pretrained=False, **kwargs):
     """ TinyNet """
-    # hw = int(224 * r)
+    r, c, d = TINYNET_CFG['a']
+    default_cfg = default_cfgs['tinynet_a']
+    assert default_cfg['input_size'] == (3, 224, 224)
+
+    channel, height, width = default_cfg['input_size']
+    height = int(r * height)
+    width = int(r * width)
+    default_cfg['input_size'] = (channel, height, width)
+
+    print("input_size:", default_cfg['input_size'])
+    print("channel mutiplier:%s, depth multiplier:%s, resolution multiplier:%s" % (c, d, r))
+
     model = _gen_tinynet(
-        default_cfgs['tinynet_050'], channel_multiplier=0.5, depth_multiplier=1.0, pretrained=pretrained, **kwargs)
+        default_cfgs['tinynet_a'], channel_multiplier=c, depth_multiplier=d, pretrained=pretrained, **kwargs)
     return model
 
 @register_model
-def tinynet_075(pretrained=False, **kwargs):
+def tinynet_b(pretrained=False, **kwargs):
     """ TinyNet """
-    # hw = int(224 * r)
+    r, c, d = TINYNET_CFG['b']
+    default_cfg = default_cfgs['tinynet_b']
+    assert default_cfg['input_size'] == (3, 224, 224)
+
+    channel, height, width = default_cfg['input_size']
+    height = int(r * height)
+    width = int(r * width)
+    default_cfg['input_size'] = (channel, height, width)
+
+    print("input_size:", default_cfg['input_size'])
+    print("channel mutiplier:%s, depth multiplier:%s, resolution multiplier:%s" % (c, d, r))
+
     model = _gen_tinynet(
-        default_cfgs['tinynet_075'], channel_multiplier=0.75, depth_multiplier=1.0, pretrained=pretrained, **kwargs)
+        default_cfgs['tinynet_b'], channel_multiplier=c, depth_multiplier=d, pretrained=pretrained, **kwargs)
     return model
 
 @register_model
-def tinynet_100(pretrained=False, **kwargs):
+def tinynet_c(pretrained=False, **kwargs):
     """ TinyNet """
-    # hw = int(224 * r)
+    r, c, d = TINYNET_CFG['c']
+    default_cfg = default_cfgs['tinynet_c']
+    assert default_cfg['input_size'] == (3, 224, 224)
+
+    channel, height, width = default_cfg['input_size']
+    height = int(r * height)
+    width = int(r * width)
+    default_cfg['input_size'] = (channel, height, width)
+
+    print("input_size:", default_cfg['input_size'])
+    print("channel mutiplier:%s, depth multiplier:%s, resolution multiplier:%s" % (c, d, r))
+
     model = _gen_tinynet(
-        default_cfgs['tinynet_100'], channel_multiplier=1.0, depth_multiplier=1.0, pretrained=pretrained, **kwargs)
+        default_cfgs['tinynet_c'], channel_multiplier=c, depth_multiplier=d, pretrained=pretrained, **kwargs)
+    return model
+
+@register_model
+def tinynet_d(pretrained=False, **kwargs):
+    """ TinyNet """
+    r, c, d = TINYNET_CFG['d']
+    default_cfg = default_cfgs['tinynet_d']
+    assert default_cfg['input_size'] == (3, 224, 224)
+
+    channel, height, width = default_cfg['input_size']
+    height = int(r * height)
+    width = int(r * width)
+    default_cfg['input_size'] = (channel, height, width)
+
+    print("input_size:", default_cfg['input_size'])
+    print("channel mutiplier:%s, depth multiplier:%s, resolution multiplier:%s" % (c, d, r))
+
+    model = _gen_tinynet(
+        default_cfgs['tinynet_d'], channel_multiplier=c, depth_multiplier=d, pretrained=pretrained, **kwargs)
+    return model
+
+@register_model
+def tinynet_e(pretrained=False, **kwargs):
+    """ TinyNet """
+    r, c, d = TINYNET_CFG['e']
+    default_cfg = default_cfgs['tinynet_e']
+    assert default_cfg['input_size'] == (3, 224, 224)
+
+    channel, height, width = default_cfg['input_size']
+    height = int(r * height)
+    width = int(r * width)
+    default_cfg['input_size'] = (channel, height, width)
+
+    print("input_size:", default_cfg['input_size'])
+    print("channel mutiplier:%s, depth multiplier:%s, resolution multiplier:%s" % (c, d, r))
+
+    model = _gen_tinynet(
+        default_cfgs['tinynet_e'], channel_multiplier=c, depth_multiplier=d, pretrained=pretrained, **kwargs)
     return model
